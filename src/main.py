@@ -53,19 +53,19 @@ import argparse
 
 def print_banner():
     banner = """
-   ____      _               _       __               __         
-  / ____/_  __/ /_  ___  ____  | |     / /___ __________/ /__  ____ 
- / /   / / / / __ \/ _ \/ __ \ | | /| / / __ `/ ___/ __  / _ \/ __ \ 
-/ /___/ /_/ / /_/ /  __/ / / / | |/ |/ / /_/ / /  / /_/ /  __/ / / /
-\____/\__, /_.___/\___/_/ /_/  |__/|__/\__,_/_/   \__,_/\___/_/ /_/ 
-     /____/                                                         
+   ______                 __      _       __               __         
+  / ____/______  ______  / /_____| |     / /___ __________/ /__  ____ 
+ / /   / ___/ / / / __ \/ __/ __ \ | /| / / __ `/ ___/ __  / _ \/ __ \\
+/ /___/ /  / /_/ / /_/ / /_/ /_/ / |/ |/ / /_/ / /  / /_/ /  __/ / / /
+\____/_/   \__, / .___/\__/\____/|__/|__/\__,_/_/   \__,_/\___/_/ /_/ 
+          /____/_/                                                    
     """
     print(banner)
     print("            CryptoWarden - Ransomware Behavior Detection & Prevention            ")
     print("="*81 + "\n")
 
 def main():
-    parser = argparse.ArgumentParser(description="CryptoWarden (CyberWarden) CLI Tool")
+    parser = argparse.ArgumentParser(description="CryptoWarden CLI Tool")
     parser.add_argument('command', choices=['start'], nargs='?', help='Command to execute (e.g. start)')
     
     args = parser.parse_args()
