@@ -1,0 +1,4 @@
+watchdog
+psutil
+colorama
+pywin32
