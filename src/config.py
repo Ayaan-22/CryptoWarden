@@ -24,5 +24,9 @@ WHITELISTED_PROCESSES = {
     'svchost.exe',
     'MsMpEng.exe',  # Windows Defender
     'csrss.exe',
-    'System'
+    'System',
+    'Antigravity.exe',
+    'SearchIndexer.exe',
+    'SupportAssistAgent.exe',
+    'Dell.TechHub.exe'
 }

@@ -49,26 +49,51 @@ def event_callback(event):
     if is_malicious:
         responder.take_action(pid, pname, reason)
 
+import argparse
+
+def print_banner():
+    banner = """
+   ____      _               _       __               __         
+  / ____/_  __/ /_  ___  ____  | |     / /___ __________/ /__  ____ 
+ / /   / / / / __ \/ _ \/ __ \ | | /| / / __ `/ ___/ __  / _ \/ __ \ 
+/ /___/ /_/ / /_/ /  __/ / / / | |/ |/ / /_/ / /  / /_/ /  __/ / / /
+\____/\__, /_.___/\___/_/ /_/  |__/|__/\__,_/_/   \__,_/\___/_/ /_/ 
+     /____/                                                         
+    """
+    print(banner)
+    print("            CryptoWarden - Ransomware Behavior Detection & Prevention            ")
+    print("="*81 + "\n")
+
 def main():
-    logger.info("Initializing Early-Stage Ransomware Detection System...")
+    parser = argparse.ArgumentParser(description="CryptoWarden (CyberWarden) CLI Tool")
+    parser.add_argument('command', choices=['start'], nargs='?', help='Command to execute (e.g. start)')
     
-    process_monitor.start()
-    monitor = FileMonitor(event_callback)
-    monitor.start()
-    
-    try:
-        while True:
-            # We need to periodically check the tracker for Suspicious IO processes
-            # because file_callback might not trigger for them if mapping failed.
-            for pid, state in list(tracker.processes.items()):
-                 is_malicious, reason = detector.analyze_behavior(state)
-                 if is_malicious:
-                     responder.take_action(pid, state.name, reason)
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Stopping system...")
-        monitor.stop()
-        process_monitor.stop()
+    args = parser.parse_args()
+
+    print_banner()
+
+    if args.command == 'start':
+        logger.info("Initializing CryptoWarden Detection System...")
+        
+        process_monitor.start()
+        monitor = FileMonitor(event_callback)
+        monitor.start()
+        
+        try:
+            while True:
+                # We need to periodically check the tracker for Suspicious IO processes
+                # because file_callback might not trigger for them if mapping failed.
+                for pid, state in list(tracker.processes.items()):
+                     is_malicious, reason = detector.analyze_behavior(state)
+                     if is_malicious:
+                         responder.take_action(pid, state.name, reason)
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Stopping system...")
+            monitor.stop()
+            process_monitor.stop()
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()
