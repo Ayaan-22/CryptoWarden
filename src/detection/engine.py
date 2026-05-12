@@ -9,7 +9,7 @@ class DetectionEngine:
     def __init__(self):
         pass
 
-    def analyze_behavior(self, process_state, current_file_entropy=0.0):
+    def analyze_behavior(self, process_state, current_file_entropy=0.0, is_honey_pot=False):
         """
         Returns a tuple (is_ransomware: bool, reason: str)
         """
@@ -43,8 +43,12 @@ class DetectionEngine:
             score += 6
             reasons.append(f"Rapid Renaming ({len(process_state.renames)} files/10s)")
 
+        # Rule 4: Honey-pot / Canary File Access
+        if is_honey_pot:
+            score += 10
+            reasons.append("Canary File Modification Detected")
+
         # Decision
-        # If High Entropy AND Rapid Modification -> ALMOST CERTAINLY RANSOMWARE
         if score >= 6:
             return True, " & ".join(reasons)
             

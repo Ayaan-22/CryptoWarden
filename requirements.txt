@@ -2,3 +2,6 @@ watchdog
 psutil
 colorama
 pywin32
+fastapi
+uvicorn
+websockets

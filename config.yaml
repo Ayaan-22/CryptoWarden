@@ -1,0 +1,42 @@
+# CryptoWarden v2.0 - Configuration
+
+monitoring:
+  directories:
+    - "%USERPROFILE%\\Documents"
+    - "%USERPROFILE%\\Desktop"
+    - "%USERPROFILE%\\Pictures"
+    - "%USERPROFILE%\\Desktop\\RansomwareTestArea"
+  ignored_extensions:
+    - .tmp
+    - .log
+    - .ini
+    - .lnk
+    - .sys
+    - .dll
+
+detection:
+  max_modifications_per_sec: 5
+  max_entropy_threshold: 7.5
+  min_file_size_for_entropy: 1024
+  entropy_check_samples: 5
+
+whitelist:
+  processes:
+    - explorer.exe
+    - svchost.exe
+    - MsMpEng.exe
+    - csrss.exe
+    - System
+    - Antigravity.exe
+    - SearchIndexer.exe
+    - SupportAssistAgent.exe
+    - Dell.TechHub.exe
+    - chrome.exe
+    - brave.exe
+    - msedge.exe
+    - python.exe
+    - pythonw.exe
+
+dashboard:
+  host: "127.0.0.1"
+  port: 8000

@@ -1,29 +1,29 @@
+import asyncio
 import time
 import psutil
-import threading
 from src.utils.logger import logger
 from src.config import WHITELISTED_PROCESSES
 
 class ProcessMonitor:
     def __init__(self, process_tracker):
         self.tracker = process_tracker
-        self.running = False
-        self.thread = None
         self._previous_io = {} # pid -> (write_count, timestamp)
+        self.task = None
 
-    def start(self):
-        self.running = True
-        self.thread = threading.Thread(target=self._monitor_loop, daemon=True)
-        self.thread.start()
-        logger.info("Process IO Monitor started.")
+    async def start(self):
+        logger.info("Process IO Monitor starting...")
+        self.task = asyncio.create_task(self._monitor_loop())
 
-    def stop(self):
-        self.running = False
-        if self.thread:
-            self.thread.join()
+    async def stop(self):
+        if self.task:
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
 
-    def _monitor_loop(self):
-        while self.running:
+    async def _monitor_loop(self):
+        while True:
             try:
                 # Iterate over all processes
                 for proc in psutil.process_iter(['pid', 'name', 'io_counters']):
@@ -49,7 +49,6 @@ class ProcessMonitor:
                                 
                                 # Update Tracker if significant activity
                                 if write_rate > 2: # More than 2 writes/sec
-                                    logger.debug(f"High IO: {name} ({pid}) - {write_rate:.2f} writes/s")
                                     proc_state = self.tracker.get_or_create(pid, name)
                                     proc_state.update_io_stats(write_rate)
                         
@@ -58,7 +57,7 @@ class ProcessMonitor:
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
                         
-                time.sleep(1) # Poll every second
+                await asyncio.sleep(1) # Poll every second
             except Exception as e:
                 logger.error(f"Error in Process Monitor: {e}")
-                time.sleep(1)
+                await asyncio.sleep(1)
