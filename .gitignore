@@ -3,10 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Logs
-*.log
-system.log
-
 # Virtual Environments
 venv/
 env/
@@ -36,3 +32,10 @@ Thumbs.db
 
 # Test areas or generated data
 RansomwareTestArea/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Log files (including rotated backups)
+system.log*
+*.log

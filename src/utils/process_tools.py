@@ -8,8 +8,9 @@ class ProcessCache:
     """
     Maintains a mapping of open files to PIDs to avoid expensive psutil iterations on every event.
     """
-    def __init__(self, refresh_interval=1.0):
+    def __init__(self, refresh_interval=0.1):
         self.file_to_pid = {}
+        self.history = {} # Keep history of recently seen files
         self.refresh_interval = refresh_interval
         self.running = False
         self._lock = threading.Lock()
@@ -28,6 +29,7 @@ class ProcessCache:
                 new_mapping = {}
                 for proc in psutil.process_iter(['pid', 'name', 'open_files']):
                     try:
+                        # Skip if no open files
                         if not proc.info['open_files']:
                             continue
                         for f in proc.info['open_files']:
@@ -37,6 +39,11 @@ class ProcessCache:
                         continue
                 
                 with self._lock:
+                    # Update history with old mapping before overwriting
+                    self.history.update(self.file_to_pid)
+                    # Limit history size
+                    if len(self.history) > 1000:
+                        self.history = dict(list(self.history.items())[-500:])
                     self.file_to_pid = new_mapping
             except Exception as e:
                 logger.error(f"Error refreshing process cache: {e}")
@@ -45,7 +52,31 @@ class ProcessCache:
     def get_pid_for_file(self, filepath: str):
         filepath = os.path.normpath(filepath)
         with self._lock:
-            return self.file_to_pid.get(filepath, (None, None))
+            # Check current mapping
+            res = self.file_to_pid.get(filepath)
+            if res: return res
+            
+            # Check history (in case file was just closed)
+            res = self.history.get(filepath)
+            if res: return res
+            
+        # Fallback: Direct check for the specific file (expensive but necessary on cache miss)
+        return self._direct_lookup(filepath)
+
+    def _direct_lookup(self, filepath: str):
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'open_files']):
+                try:
+                    files = proc.info.get('open_files')
+                    if files:
+                        for f in files:
+                            if os.path.normpath(f.path) == filepath:
+                                return (proc.info['pid'], proc.info['name'])
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception:
+            pass
+        return (None, None)
 
 # Global cache instance
 process_cache = ProcessCache()
@@ -62,11 +93,9 @@ def kill_process(pid: int):
     """
     try:
         proc = psutil.Process(pid)
-        proc.terminate()
-        try:
-            proc.wait(timeout=3)
-        except psutil.TimeoutExpired:
-            proc.kill()
+        proc.kill()
+        return True
+    except psutil.NoSuchProcess:
         return True
     except Exception as e:
         logger.error(f"Failed to kill process {pid}: {e}")

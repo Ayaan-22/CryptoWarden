@@ -6,8 +6,8 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 
 # Configuration
-TEST_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "RansomwareTestArea")
-NUM_FILES = 100 # Increase to ensure it runs for > 5 seconds
+TEST_DIR = os.path.join(os.getcwd(), "RansomwareTestArea")
+NUM_FILES = 200 # Increase to ensure it runs for > 5 seconds
 
 def create_dummy_files():
     if os.path.exists(TEST_DIR):
@@ -25,6 +25,7 @@ def create_dummy_files():
         with open(filename, "w") as f:
             # Write some low entropy text
             f.write("This is a sensitive document. " * 50)
+        time.sleep(0.01)
             
 def encrypt_file(filepath):
     try:
@@ -61,7 +62,7 @@ def run_simulation():
     # Let's simple loop to ensure PID is captured easily.
     for f in files:
         encrypt_file(f)
-        time.sleep(0.05) # FAST! Should trigger rate limit.
+        time.sleep(0.05)
 
     print("Simulation Complete. If I am still running, detection failed.")
 

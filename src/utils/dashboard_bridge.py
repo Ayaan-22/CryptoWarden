@@ -5,11 +5,11 @@ import uvicorn
 from src.utils.logger import logger
 
 class DashboardBridge:
-    def __init__(self, host="127.0.0.1", port=8000):
+    def __init__(self, host="127.0.0.1", port=8001):
         self.app = FastAPI()
         self.host = host
         self.port = port
-        self.active_connections = []
+        self.active_connections = set()
         self.server_task = None
         self.command_queue = asyncio.Queue()
 
@@ -17,7 +17,7 @@ class DashboardBridge:
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             await websocket.accept()
-            self.active_connections.append(websocket)
+            self.active_connections.add(websocket)
             logger.info(f"Dashboard connected. Active sessions: {len(self.active_connections)}")
             try:
                 while True:
@@ -30,12 +30,15 @@ class DashboardBridge:
                     except json.JSONDecodeError:
                         logger.warning("Received invalid JSON from dashboard")
             except WebSocketDisconnect:
-                self.active_connections.remove(websocket)
+                self.active_connections.discard(websocket)
                 logger.info(f"Dashboard disconnected. Active sessions: {len(self.active_connections)}")
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                self.active_connections.discard(websocket)
 
     async def start(self):
         """Starts the FastAPI server in the background."""
-        config = uvicorn.Config(self.app, host=self.host, port=self.port, log_level="error")
+        config = uvicorn.Config(self.app, host=self.host, port=self.port, log_level="info")
         server = uvicorn.Server(config)
         self.server_task = asyncio.create_task(server.serve())
         logger.info(f"Dashboard Bridge started at ws://{self.host}:{self.port}/ws")
@@ -54,15 +57,18 @@ class DashboardBridge:
             return
 
         message = json.dumps(data)
+        # Copy list for iteration to avoid race conditions
+        targets = list(self.active_connections)
         disconnected = []
-        for connection in self.active_connections:
+        
+        for connection in targets:
             try:
                 await connection.send_text(message)
             except Exception:
                 disconnected.append(connection)
 
         for conn in disconnected:
-            self.active_connections.remove(conn)
+            self.active_connections.discard(conn)
 
     async def send_activity(self, event):
         await self.broadcast({

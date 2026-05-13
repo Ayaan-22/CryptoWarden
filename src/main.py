@@ -1,7 +1,16 @@
 import asyncio
 import time
 import sys
+import os
 import argparse
+import signal
+
+# --- Path Hardening for Cross-Device Compatibility ---
+# Ensures 'src' can be found regardless of where the script is executed from
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 from src.monitoring.file_monitor import FileMonitor
 from src.monitoring.process_monitor import ProcessMonitor
 from src.monitoring.honey_pot import setup_honey_pots, is_honey_pot_access
@@ -42,13 +51,28 @@ class CryptoWarden:
 
                 # 0. Send to Dashboard
                 self.stats["scanned"] += 1
-                await self.bridge.send_activity(event)
+                try:
+                    await self.bridge.send_activity(event)
+                except Exception as e:
+                    logger.debug(f"Could not update dashboard: {e}")
 
+                if not pid:
+                    top_procs = self.tracker.get_top_io_processes(limit=3)
+                    for tpid, trate in top_procs:
+                        # Skip whitelisted processes
+                        tname = self.tracker.get_process_name(tpid)
+                        from src.config import WHITELISTED_PROCESSES
+                        if tname not in WHITELISTED_PROCESSES:
+                            pid = tpid
+                            pname = tname
+                            logger.info(f"Probabilistically attributed {event_type} to high-IO process {pname} ({pid})")
+                            break
+                
                 if not pid:
                     self.queue.task_done()
                     continue
 
-                # 1. Check Honey-pot
+                target_path = src_path # Default
                 is_honey = is_honey_pot_access(src_path, self.honey_pot_paths)
                 if event_type == 'moved' and event.get('dest_path'):
                     is_honey = is_honey or is_honey_pot_access(event['dest_path'], self.honey_pot_paths)
@@ -66,7 +90,12 @@ class CryptoWarden:
                         proc_state.add_entropy_sample(current_entropy)
 
                 # 4. Detect
-                is_malicious, reason = self.detector.analyze_behavior(proc_state, current_entropy, is_honey)
+                is_malicious, reason = self.detector.analyze_behavior(
+                    proc_state, 
+                    current_file_entropy=current_entropy, 
+                    is_honey_pot=is_honey,
+                    target_path=target_path if event_type in ['modified', 'created', 'moved'] else None
+                )
 
                 # 5. Respond
                 if is_malicious:
@@ -89,7 +118,7 @@ class CryptoWarden:
         """
         while self.running:
             for pid, state in list(self.tracker.processes.items()):
-                is_malicious, reason = self.detector.analyze_behavior(state)
+                is_malicious, reason = self.detector.analyze_behavior(state, target_path=None)
                 if is_malicious:
                     self.stats["blocked"] += 1
                     await self.bridge.send_alert(pid, state.name, reason)
@@ -126,6 +155,15 @@ class CryptoWarden:
     async def start(self):
         self.running = True
         logger.info("Initializing CryptoWarden Upgraded Detection System...")
+        
+        # Setup Signal Handlers
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop = asyncio.get_running_loop()
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(self.stop()))
+            except NotImplementedError:
+                # signal.add_signal_handler not implemented on Windows for some loops
+                pass
         
         # Start background services
         process_cache.start()
@@ -187,12 +225,36 @@ def main():
     print_banner()
 
     if args.command == 'start':
+        app = CryptoWarden()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
         try:
-            app = CryptoWarden()
-            asyncio.run(app.start())
+            loop.run_until_complete(app.start())
         except KeyboardInterrupt:
-            pass
-    else:
+            logger.info("Interrupt received, forcing shutdown...")
+            
+            # 1. Stop components
+            try:
+                loop.run_until_complete(asyncio.wait_for(app.stop(), timeout=3.0))
+            except:
+                pass
+                
+            # 2. Cancel all remaining tasks
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            
+            # 3. Final loop run to allow cancellations to propagate
+            try:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except:
+                pass
+        finally:
+            loop.close()
+            logger.info("Engine stopped. Goodbye.")
+            # Hard exit to ensure no dangling threads keep the terminal busy
+            os._exit(0)
         parser.print_help()
 
 if __name__ == "__main__":

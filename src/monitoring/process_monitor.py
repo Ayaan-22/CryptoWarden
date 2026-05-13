@@ -57,7 +57,7 @@ class ProcessMonitor:
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
                         
-                await asyncio.sleep(1) # Poll every second
+                await asyncio.sleep(0.1) # Poll every 0.1 seconds
             except Exception as e:
                 logger.error(f"Error in Process Monitor: {e}")
                 await asyncio.sleep(1)

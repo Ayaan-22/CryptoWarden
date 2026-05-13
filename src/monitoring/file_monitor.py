@@ -20,6 +20,13 @@ class RansomwareEventHandler(FileSystemEventHandler):
         if event_type == 'moved' and dest_path and not pid:
             pid, pname = get_process_using_file(dest_path)
 
+        if not pid:
+            # Fallback for ultra-fast operations: mark for probabilistic attribution in engine
+            pass
+
+        if not pid and event_type != 'deleted':
+             logger.debug(f"Could not attribute {event_type} on {src_path} to any process.")
+
         event_data = {
             'type': event_type,
             'src_path': src_path,
@@ -63,7 +70,8 @@ class FileMonitor:
                 except Exception:
                     continue
             
-            watch = self.observer.schedule(self.handler, folder, recursive=True)
+            abs_folder = os.path.abspath(folder)
+            watch = self.observer.schedule(self.handler, abs_folder, recursive=True)
             self.watch_list.append(watch)
             logger.info(f"Monitoring directory: {folder}")
         

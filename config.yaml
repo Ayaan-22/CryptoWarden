@@ -5,7 +5,6 @@ monitoring:
     - "%USERPROFILE%\\Documents"
     - "%USERPROFILE%\\Desktop"
     - "%USERPROFILE%\\Pictures"
-    - "%USERPROFILE%\\Desktop\\RansomwareTestArea"
   ignored_extensions:
     - .tmp
     - .log
@@ -34,9 +33,20 @@ whitelist:
     - chrome.exe
     - brave.exe
     - msedge.exe
+    - msedgewebview2.exe
+    - Code.exe
+    - git.exe
+    - pyrefly.exe
+    - pytest.exe
+    - Dell.TechHub.DataManager.exe
+    - SDXHelper.exe
+    - Registry
+    - pwsh.exe
+    - cmd.exe
     - python.exe
-    - pythonw.exe
+    - powershell.exe
+    - conhost.exe
 
 dashboard:
   host: "127.0.0.1"
-  port: 8000
+  port: 8001

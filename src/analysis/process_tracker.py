@@ -65,3 +65,15 @@ class ProcessTracker:
             proc.add_rename(timestamp)
             
         return proc
+
+    def get_top_io_processes(self, limit=3):
+        """
+        Returns a list of (pid, io_write_rate) sorted by rate descending.
+        """
+        procs = [(p.pid, p.io_write_rate) for p in self.processes.values()]
+        return sorted(procs, key=lambda x: x[1], reverse=True)[:limit]
+
+    def get_process_name(self, pid):
+        if pid in self.processes:
+            return self.processes[pid].name
+        return "Unknown"
