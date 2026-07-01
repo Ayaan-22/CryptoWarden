@@ -35,7 +35,10 @@ RansomwareTestArea/
 .pytest_cache/
 .coverage
 htmlcov/
+.codex_deps/
 
 # Log files (including rotated backups)
 system.log*
 *.log
+
+.agents

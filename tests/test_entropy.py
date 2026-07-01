@@ -68,11 +68,21 @@ class TestFileEntropy:
     def test_small_text_file(self):
         """Small text file should have moderate entropy."""
         with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as f:
-            f.write(b"Hello World! This is a test file for entropy." * 10)
+            f.write(b"Hello World! This is a test file for entropy." * 40)
             path = f.name
         try:
             entropy = calculate_file_entropy(path)
             assert 3.0 < entropy < 6.0
+        finally:
+            os.unlink(path)
+
+    def test_tiny_file_below_configured_minimum_returns_zero(self):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as f:
+            f.write(b"tiny")
+            path = f.name
+        try:
+            entropy = calculate_file_entropy(path)
+            assert entropy == 0.0
         finally:
             os.unlink(path)
 

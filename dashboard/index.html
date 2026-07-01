@@ -70,9 +70,9 @@
 
         <!-- Tab Bar -->
         <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
-            <button class="tab-btn" onclick="switchTab('activity')">Activity Log</button>
-            <button class="tab-btn" onclick="switchTab('threats')">Threats</button>
+            <button class="tab-btn active" onclick="switchTab('overview', this)">Overview</button>
+            <button class="tab-btn" onclick="switchTab('activity', this)">Activity Log</button>
+            <button class="tab-btn" onclick="switchTab('threats', this)">Threats</button>
         </div>
 
         <!-- ═══ Tab 1: Overview (Charts + Summary) ═══ -->
@@ -158,6 +158,6 @@
     </main>
 </div>
 
-<script src="dashboard.js"></script>
+<script src="dashboard.js?v=20260630-activity-stats"></script>
 </body>
 </html>

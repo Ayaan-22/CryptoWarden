@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import pytest
 from src.analysis.process_tracker import ProcessState
 from src.detection.engine import DetectionEngine
+from src.config import is_whitelisted_process
 
 
 @pytest.fixture
@@ -68,6 +69,33 @@ class TestWhitelist:
         is_mal, _ = engine.analyze_behavior(ps)
         assert is_mal is False
 
+    def test_antigravity_ide_is_whitelisted(self, engine):
+        ps = ProcessState(pid=201, name="Antigravity IDE.exe")
+        ps.io_write_rate = 999
+        is_mal, reason = engine.analyze_behavior(ps)
+        assert is_mal is False
+        assert reason == "Whitelisted"
+
+    def test_codex_cli_is_whitelisted(self, engine):
+        ps = ProcessState(pid=203, name="Codex.exe")
+        ps.io_write_rate = 999
+        is_mal, reason = engine.analyze_behavior(ps)
+        assert is_mal is False
+        assert reason == "Whitelisted"
+
+    def test_whitelist_matching_is_case_insensitive(self, engine):
+        ps = ProcessState(pid=202, name="ANTIGRAVITY IDE.EXE")
+        ps.io_write_rate = 999
+        is_mal, reason = engine.analyze_behavior(ps)
+        assert is_mal is False
+        assert reason == "Whitelisted"
+
+    def test_scriptable_interpreters_are_not_whitelisted_by_default(self):
+        assert is_whitelisted_process("python.exe") is False
+        assert is_whitelisted_process("powershell.exe") is False
+        assert is_whitelisted_process("pwsh.exe") is False
+        assert is_whitelisted_process("cmd.exe") is False
+
 
 # ── Rule 1: Rapid Modification ──
 
@@ -88,11 +116,45 @@ class TestRapidModification:
 # ── Rule 1.5: IO Write Rate ──
 
 class TestIOWriteRate:
-    def test_extreme_io_rate_triggers_detection(self, engine, high_io_process):
-        """IO rate >50 gives score +10, which is >= 10, triggers even with 1 reason."""
+    def test_extreme_io_rate_alone_does_not_trigger_detection(self, engine, high_io_process):
+        """I/O rate alone is noisy and must not kill unrelated desktop apps."""
         is_mal, reason = engine.analyze_behavior(high_io_process)
+        assert is_mal is False
+        assert reason is None
+
+    def test_python_ransomware_simulator_triggers_detection(self, engine):
+        ps = ProcessState(pid=10652, name="python.exe")
+        ps.io_write_rate = 12.0
+        now = time.time()
+        for i in range(8):
+            ps.add_modification(now + i * 0.1)
+            ps.add_rename(now + i * 0.1)
+
+        is_mal, reason = engine.analyze_behavior(
+            ps,
+            current_file_entropy=7.9,
+            target_path="doc_1.txt.enc"
+        )
+
         assert is_mal is True
-        assert "IO Write Rate" in reason
+        assert "Renaming" in reason
+        assert "Extension" in reason
+
+    def test_unattributed_ransomware_test_area_pattern_triggers_alert(self, engine):
+        ps = ProcessState(pid=-1, name="Unknown process")
+        now = time.time()
+        for i in range(5):
+            ps.add_rename(now + i * 0.1)
+
+        is_mal, reason = engine.analyze_behavior(
+            ps,
+            current_file_entropy=7.9,
+            target_path="RansomwareTestArea/doc_1.txt.enc"
+        )
+
+        assert is_mal is True
+        assert "Renaming" in reason
+        assert "Extension" in reason
 
     def test_moderate_io_rate_alone_not_enough(self, engine):
         ps = ProcessState(pid=500, name="app.exe")
@@ -192,8 +254,23 @@ class TestCombinedAttack:
         assert "&" in reason
 
     def test_benign_high_io_whitelisted(self, engine):
-        """Even extreme behavior is safe if whitelisted."""
+        """I/O noise alone is safe if whitelisted."""
         ps = ProcessState(pid=1, name="svchost.exe")
         ps.io_write_rate = 500.0
-        is_mal, _ = engine.analyze_behavior(ps, current_file_entropy=7.9, is_honey_pot=True)
+        is_mal, _ = engine.analyze_behavior(ps)
         assert is_mal is False
+
+    def test_whitelisted_mass_encryption_pattern_still_triggers(self, engine):
+        ps = ProcessState(pid=2, name="SearchIndexer.exe")
+        now = time.time()
+        for i in range(5):
+            ps.add_rename(now + i * 0.1)
+
+        is_mal, reason = engine.analyze_behavior(
+            ps,
+            current_file_entropy=7.9,
+            target_path="doc_1.txt.enc"
+        )
+
+        assert is_mal is True
+        assert "high-confidence ransomware behavior" in reason

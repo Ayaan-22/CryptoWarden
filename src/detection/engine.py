@@ -1,7 +1,8 @@
 from src.config import (
     MAX_FILE_MODIFICATIONS_PER_SEC, 
     MAX_ENTROPY_THRESHOLD,
-    WHITELISTED_PROCESSES
+    SUSPICIOUS_EXTENSIONS,
+    is_whitelisted_process
 )
 from src.utils.logger import logger
 
@@ -13,11 +14,11 @@ class DetectionEngine:
         """
         Returns a tuple (is_ransomware: bool, reason: str)
         """
-        if process_state.name in WHITELISTED_PROCESSES:
-            return False, "Whitelisted"
+        is_whitelisted = is_whitelisted_process(process_state.name)
 
         score = 0
         reasons = []
+        suspicious_ext = None
 
         # Rule 1: Rapid File Modification
         mod_rate = process_state.get_modification_rate()
@@ -45,21 +46,46 @@ class DetectionEngine:
 
         # Rule 4: Suspicious Extension Change
         if target_path:
-            ext = target_path.split('.')[-1].lower()
-            suspicious_exts = {'enc', 'crypt', 'locked', 'wannacry', 'odin', 'zepto', 'locky', 'aes', 'cryptolocker'}
-            if ext in suspicious_exts:
+            ext = "." + target_path.rsplit('.', 1)[-1].lower() if '.' in target_path else ''
+            if ext in SUSPICIOUS_EXTENSIONS:
+                suspicious_ext = ext
                 score += 8
-                reasons.append(f"Suspicious Extension Change (.{ext})")
+                reasons.append(f"Suspicious Extension Change ({ext})")
 
         # Rule 5: Honey-pot / Canary File Access
         if is_honey_pot:
             score += 10
             reasons.append("Canary File Modification Detected")
 
+        if is_whitelisted:
+            high_confidence_file_attack = (
+                is_honey_pot
+                or (
+                    suspicious_ext
+                    and (
+                        len(process_state.renames) > 3
+                        or current_file_entropy > MAX_ENTROPY_THRESHOLD
+                    )
+                )
+            )
+
+            if not high_confidence_file_attack:
+                return False, "Whitelisted"
+
+            reasons.insert(0, "Whitelisted process showed high-confidence ransomware behavior")
+
         # Decision
         if score >= 6:
-            # Harder block if multiple factors exist
-            if len(reasons) >= 2 or score >= 10:
+            file_behavior_confirmed = (
+                mod_rate > MAX_FILE_MODIFICATIONS_PER_SEC
+                or len(process_state.renames) > 3
+                or suspicious_ext
+                or current_file_entropy > MAX_ENTROPY_THRESHOLD
+                or is_honey_pot
+            )
+
+            # I/O rate alone is too noisy to terminate real desktop apps.
+            if file_behavior_confirmed and (len(reasons) >= 2 or score >= 10):
                 return True, " & ".join(reasons)
             
         return False, None

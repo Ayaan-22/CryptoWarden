@@ -1,9 +1,12 @@
 import asyncio
 import websockets
 import json
+import os
 
 async def mock_dashboard():
-    uri = "ws://127.0.0.1:8000/ws"
+    token = os.environ.get("CRYPTOWARDEN_DASHBOARD_TOKEN", "")
+    suffix = f"?token={token}" if token else ""
+    uri = f"ws://127.0.0.1:8001/ws{suffix}"
     print(f"Connecting to {uri}...")
     try:
         async with websockets.connect(uri) as websocket:

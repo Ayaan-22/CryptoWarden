@@ -137,16 +137,20 @@ setInterval(() => {
 }, 10000);
 
 // ─── Tab Switching ───
-window.switchTab = function(tabId) {
+window.switchTab = function(tabId, trigger) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     $('tab-' + tabId).classList.add('active');
-    event.target.classList.add('active');
+    const activeButton = trigger || (window.event && window.event.target);
+    if (activeButton) activeButton.classList.add('active');
 };
 
 // ─── WebSocket ───
 function connect() {
-    socket = new WebSocket('ws://127.0.0.1:8001/ws');
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host || '127.0.0.1:8001';
+    const token = window.CRYPTO_WARDEN_WS_TOKEN ? `?token=${encodeURIComponent(window.CRYPTO_WARDEN_WS_TOKEN)}` : '';
+    socket = new WebSocket(`${protocol}//${host}/ws${token}`);
 
     socket.onopen = () => {
         statusBadge.classList.add('connected');
@@ -179,6 +183,7 @@ function handleMessage(msg) {
     if (msg.type === 'activity') {
         addFeedItem(msg.data);
         eventCount++;
+        scannedCount.textContent = eventCount;
         epmBucketCount++;
         // Update type chart
         const t = msg.data.type;
@@ -189,6 +194,9 @@ function handleMessage(msg) {
         }
     } else if (msg.type === 'alert') {
         addAlert(msg.data);
+        blockedCount.textContent = alertCount;
+        healthStatus.textContent = 'Threat';
+        healthStatus.style.color = 'var(--accent-amber)';
     } else if (msg.type === 'stats') {
         animateCounter(scannedCount, msg.data.scanned);
         animateCounter(blockedCount, msg.data.blocked);
@@ -220,12 +228,24 @@ function addFeedItem(data) {
     const time = new Date().toLocaleTimeString('en-US', { hour12: false });
     const shortPath = data.src_path ? data.src_path.split('\\').slice(-2).join('\\') : 'unknown';
 
-    item.innerHTML = `
-        <span class="feed-time">${time}</span>
-        <span class="feed-badge ${data.type}">${data.type}</span>
-        <span class="feed-path" title="${data.src_path || ''}">${shortPath}</span>
-        <span class="feed-pid">${data.pid ? 'PID ' + data.pid : '—'}</span>
-    `;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'feed-time';
+    timeEl.textContent = time;
+
+    const badgeEl = document.createElement('span');
+    badgeEl.className = `feed-badge ${typeCounts[data.type] !== undefined ? data.type : ''}`;
+    badgeEl.textContent = data.type || 'event';
+
+    const pathEl = document.createElement('span');
+    pathEl.className = 'feed-path';
+    pathEl.title = data.src_path || '';
+    pathEl.textContent = shortPath;
+
+    const pidEl = document.createElement('span');
+    pidEl.className = 'feed-pid';
+    pidEl.textContent = data.pid ? `PID ${data.pid}` : '-';
+
+    item.append(timeEl, badgeEl, pathEl, pidEl);
 
     feedContent.insertBefore(item, feedContent.firstChild);
     if (feedContent.children.length > 200) feedContent.removeChild(feedContent.lastChild);
@@ -252,7 +272,7 @@ function addAlert(data) {
     // Add clone to Overview tab
     const emptyOverview = overviewAlerts.querySelector('.panel-empty');
     if (emptyOverview) emptyOverview.remove();
-    overviewAlerts.insertBefore(alertEl.cloneNode(true), overviewAlerts.firstChild);
+    overviewAlerts.insertBefore(buildAlertElement(data), overviewAlerts.firstChild);
     // Keep overview compact
     while (overviewAlerts.children.length > 3) overviewAlerts.removeChild(overviewAlerts.lastChild);
 
@@ -265,26 +285,40 @@ function addAlert(data) {
 function buildAlertElement(data) {
     const el = document.createElement('div');
     el.className = 'alert-item';
-    el.innerHTML = `
-        <div class="alert-severity">
-            <span class="pulse-ring"></span>
-            Critical — Ransomware Detected
-        </div>
-        <div class="alert-detail">
-            <strong>${data.name || 'Unknown'}</strong> (PID: ${data.pid || '?'})<br>
-            ${data.reason || 'Suspicious behavior detected'}
-        </div>
-        <div class="alert-actions">
-            <button class="btn btn-danger" onclick="sendCommand('kill', ${data.pid})">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline;vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                Terminate
-            </button>
-            <button class="btn btn-success" onclick="sendCommand('whitelist', null, '${data.name}')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline;vertical-align:-2px;margin-right:4px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Whitelist
-            </button>
-        </div>
-    `;
+    el.dataset.pid = data.pid || '';
+
+    const severity = document.createElement('div');
+    severity.className = 'alert-severity';
+    const pulse = document.createElement('span');
+    pulse.className = 'pulse-ring';
+    severity.append(pulse, document.createTextNode('Critical - Ransomware Detected'));
+
+    const detail = document.createElement('div');
+    detail.className = 'alert-detail';
+    const name = document.createElement('strong');
+    name.textContent = data.name || 'Unknown';
+    detail.append(
+        name,
+        document.createTextNode(` (PID: ${data.pid || '?'})`),
+        document.createElement('br'),
+        document.createTextNode(data.reason || 'Suspicious behavior detected')
+    );
+
+    const actions = document.createElement('div');
+    actions.className = 'alert-actions';
+
+    const killBtn = document.createElement('button');
+    killBtn.className = 'btn btn-danger';
+    killBtn.textContent = 'Terminate';
+    killBtn.addEventListener('click', () => sendCommand('kill', data.pid));
+
+    const whitelistBtn = document.createElement('button');
+    whitelistBtn.className = 'btn btn-success';
+    whitelistBtn.textContent = 'Whitelist';
+    whitelistBtn.addEventListener('click', () => sendCommand('whitelist', null, data.name));
+
+    actions.append(killBtn, whitelistBtn);
+    el.append(severity, detail, actions);
     return el;
 }
 
@@ -301,7 +335,7 @@ function sendCommand(command, pid = null, processName = null) {
     if (command === 'kill') {
         const alerts = alertsContent.querySelectorAll('.alert-item');
         for (const a of alerts) {
-            if (a.innerHTML.includes(`PID: ${pid}`)) {
+            if (a.dataset.pid === String(pid)) {
                 a.style.opacity = '0.3';
                 a.style.pointerEvents = 'none';
                 a.style.transform = 'scale(0.97)';

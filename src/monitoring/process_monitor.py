@@ -1,13 +1,14 @@
 import asyncio
 import time
+import os
 import psutil
 from src.utils.logger import logger
-from src.config import WHITELISTED_PROCESSES
 
 class ProcessMonitor:
     def __init__(self, process_tracker):
         self.tracker = process_tracker
         self._previous_io = {} # pid -> (write_count, timestamp)
+        self._own_pid = os.getpid()
         self.task = None
 
     async def start(self):
@@ -31,12 +32,15 @@ class ProcessMonitor:
                         pid = proc.info['pid']
                         name = proc.info['name']
                         io = proc.info['io_counters']
+
+                        if pid == self._own_pid:
+                            continue
                         
                         if not io:
                             continue
                             
                         # Calculate Delta
-                        current_writes = io.write_count
+                        current_writes = io.write_count + (getattr(io, "write_bytes", 0) / 4096)
                         now = time.time()
                         
                         if pid in self._previous_io:

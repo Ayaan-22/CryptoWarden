@@ -62,7 +62,7 @@ def run_simulation():
     # Let's simple loop to ensure PID is captured easily.
     for f in files:
         encrypt_file(f)
-        time.sleep(0.05)
+        time.sleep(0.2)
 
     print("Simulation Complete. If I am still running, detection failed.")
 

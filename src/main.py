@@ -20,6 +20,13 @@ from src.detection.engine import DetectionEngine
 from src.response.responder import Responder
 from src.utils.logger import logger
 from src.utils.process_tools import process_cache
+from src.config import (
+    DASHBOARD_AUTH_TOKEN,
+    DASHBOARD_HOST,
+    DASHBOARD_PORT,
+    add_whitelisted_process,
+    is_whitelisted_process,
+)
 
 from src.utils.dashboard_bridge import DashboardBridge
 
@@ -29,11 +36,41 @@ class CryptoWarden:
         self.detector = DetectionEngine()
         self.responder = Responder()
         self.process_monitor = ProcessMonitor(self.tracker)
-        self.bridge = DashboardBridge()
+        self.bridge = DashboardBridge(
+            host=DASHBOARD_HOST,
+            port=DASHBOARD_PORT,
+            auth_token=DASHBOARD_AUTH_TOKEN
+        )
+        process_cache.tracker = self.tracker
         self.queue = asyncio.Queue()
         self.honey_pot_paths = set()
         self.running = False
+        self.file_monitor = None
+        self.self_pid = os.getpid()
+        self.alerted_processes = set()
         self.stats = {"scanned": 0, "blocked": 0}
+
+    async def handle_detection(self, pid, process_name, reason):
+        alert_key = (pid, process_name)
+        if alert_key in self.alerted_processes:
+            return
+
+        self.alerted_processes.add(alert_key)
+        self.stats["blocked"] += 1
+        await self.bridge.send_alert(pid, process_name, reason)
+
+        if isinstance(pid, int) and pid > 0 and not is_whitelisted_process(process_name):
+            self.responder.take_action(pid, process_name, reason)
+            return
+
+        logger.critical(f"RANSOMWARE-LIKE ACTIVITY DETECTED! PID: {pid} ({process_name})")
+        logger.critical(f"Reason: {reason}")
+        logger.warning("No process was terminated because the activity could not be safely mapped to a killable process.")
+
+    async def publish_stats(self):
+        while self.running:
+            await self.bridge.send_stats(self.stats)
+            await asyncio.sleep(1)
 
     async def process_events(self):
         """
@@ -56,19 +93,31 @@ class CryptoWarden:
                 except Exception as e:
                     logger.debug(f"Could not update dashboard: {e}")
 
-                if not pid:
+                if self.stats["scanned"] % 25 == 0:
+                    logger.info(
+                        f"Processed {self.stats['scanned']} file events "
+                        f"({self.stats['blocked']} blocked so far)"
+                    )
+
+                if not pid or pid == -1:
                     top_procs = self.tracker.get_top_io_processes(limit=3)
+                    attributed = False
                     for tpid, trate in top_procs:
-                        # Skip whitelisted processes
+                        if not isinstance(tpid, int) or tpid <= 0 or trate <= 0:
+                            continue
                         tname = self.tracker.get_process_name(tpid)
-                        from src.config import WHITELISTED_PROCESSES
-                        if tname not in WHITELISTED_PROCESSES:
+                        if tname and tname != "Unknown" and not is_whitelisted_process(tname):
                             pid = tpid
                             pname = tname
                             logger.info(f"Probabilistically attributed {event_type} to high-IO process {pname} ({pid})")
+                            attributed = True
                             break
-                
-                if not pid:
+                    if not attributed:
+                        pid = -1
+                        pname = "Unknown process"
+
+                if pid == self.self_pid:
+                    logger.debug(f"Ignoring self-attributed {event_type} event on {src_path}")
                     self.queue.task_done()
                     continue
 
@@ -99,13 +148,10 @@ class CryptoWarden:
 
                 # 5. Respond
                 if is_malicious:
-                    self.stats["blocked"] += 1
-                    await self.bridge.send_alert(pid, pname, reason)
-                    self.responder.take_action(pid, pname, reason)
+                    await self.handle_detection(pid, pname, reason)
                 
                 # 6. Periodic Stats Update
-                if self.stats["scanned"] % 10 == 0:
-                    await self.bridge.send_stats(self.stats)
+                await self.bridge.send_stats(self.stats)
 
                 self.queue.task_done()
             except Exception as e:
@@ -118,11 +164,12 @@ class CryptoWarden:
         """
         while self.running:
             for pid, state in list(self.tracker.processes.items()):
+                if pid == self.self_pid:
+                    continue
+
                 is_malicious, reason = self.detector.analyze_behavior(state, target_path=None)
                 if is_malicious:
-                    self.stats["blocked"] += 1
-                    await self.bridge.send_alert(pid, state.name, reason)
-                    self.responder.take_action(pid, state.name, reason)
+                    await self.handle_detection(pid, state.name, reason)
             await asyncio.sleep(2)
 
     async def process_commands(self):
@@ -144,8 +191,7 @@ class CryptoWarden:
                     name = cmd.get("process_name")
                     if name:
                         logger.info(f"Dashboard requested WHITELIST for {name}")
-                        from src.config import WHITELISTED_PROCESSES
-                        WHITELISTED_PROCESSES.add(name)
+                        add_whitelisted_process(name)
                         await self.bridge.send_activity({"type": "info", "message": f"Whitelisted {name}"})
 
                 self.bridge.command_queue.task_done()
@@ -181,6 +227,7 @@ class CryptoWarden:
         self.event_task = asyncio.create_task(self.process_events())
         self.check_task = asyncio.create_task(self.background_checks())
         self.command_task = asyncio.create_task(self.process_commands())
+        self.stats_task = asyncio.create_task(self.publish_stats())
         
         logger.info("System fully operational. Monitoring for ransomware behavior...")
         
@@ -193,18 +240,30 @@ class CryptoWarden:
             await self.stop()
 
     async def stop(self):
+        if not self.running:
+            return
+
         self.running = False
         logger.info("Stopping system...")
-        self.file_monitor.stop()
+        if self.file_monitor:
+            self.file_monitor.stop()
         await self.process_monitor.stop()
         await self.bridge.stop()
         process_cache.stop()
-        self.event_task.cancel()
-        self.check_task.cancel()
-        self.command_task.cancel()
+
+        tasks = [
+            getattr(self, "event_task", None),
+            getattr(self, "check_task", None),
+            getattr(self, "command_task", None),
+            getattr(self, "stats_task", None),
+        ]
+        for task in tasks:
+            if task:
+                task.cancel()
+        await asyncio.gather(*(task for task in tasks if task), return_exceptions=True)
 
 def print_banner():
-    banner = """
+    banner = r"""
    ______                 __      _       __               __         
   / ____/______  ______  / /_____| |     / /___ __________/ /__  ____ 
  / /   / ___/ / / / __ \/ __/ __ \ | /| / / __ `/ ___/ __  / _ \/ __ \\
@@ -224,38 +283,17 @@ def main():
 
     print_banner()
 
-    if args.command == 'start':
-        app = CryptoWarden()
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            loop.run_until_complete(app.start())
-        except KeyboardInterrupt:
-            logger.info("Interrupt received, forcing shutdown...")
-            
-            # 1. Stop components
-            try:
-                loop.run_until_complete(asyncio.wait_for(app.stop(), timeout=3.0))
-            except:
-                pass
-                
-            # 2. Cancel all remaining tasks
-            pending = asyncio.all_tasks(loop)
-            for task in pending:
-                task.cancel()
-            
-            # 3. Final loop run to allow cancellations to propagate
-            try:
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            except:
-                pass
-        finally:
-            loop.close()
-            logger.info("Engine stopped. Goodbye.")
-            # Hard exit to ensure no dangling threads keep the terminal busy
-            os._exit(0)
+    if args.command != 'start':
         parser.print_help()
+        return
+
+    app = CryptoWarden()
+    try:
+        asyncio.run(app.start())
+    except KeyboardInterrupt:
+        logger.info("Interrupt received, shutdown requested.")
+    finally:
+        logger.info("Engine stopped. Goodbye.")
 
 if __name__ == "__main__":
     main()

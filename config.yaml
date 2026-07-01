@@ -5,6 +5,7 @@ monitoring:
     - "%USERPROFILE%\\Documents"
     - "%USERPROFILE%\\Desktop"
     - "%USERPROFILE%\\Pictures"
+    - "RansomwareTestArea"
   ignored_extensions:
     - .tmp
     - .log
@@ -12,12 +13,41 @@ monitoring:
     - .lnk
     - .sys
     - .dll
+  ignored_directories:
+    - .git
+    - .pytest_cache
+    - __pycache__
+    - .venv
+    - .agents
+    - .gemini
 
 detection:
   max_modifications_per_sec: 5
   max_entropy_threshold: 7.5
   min_file_size_for_entropy: 1024
   entropy_check_samples: 5
+  suspicious_extensions:
+    - .enc
+    - .crypt
+    - .locked
+    - .wannacry
+    - .odin
+    - .zepto
+    - .locky
+    - .aes
+    - .cryptolocker
+
+response:
+  # Use "alert_only" to test detections without terminating processes.
+  mode: "terminate"
+  protected_processes:
+    - System
+    - Registry
+    - csrss.exe
+    - wininit.exe
+    - winlogon.exe
+    - services.exe
+    - lsass.exe
 
 whitelist:
   processes:
@@ -27,6 +57,8 @@ whitelist:
     - csrss.exe
     - System
     - Antigravity.exe
+    - Antigravity IDE.exe
+    - codex.exe
     - SearchIndexer.exe
     - SupportAssistAgent.exe
     - Dell.TechHub.exe
@@ -41,12 +73,10 @@ whitelist:
     - Dell.TechHub.DataManager.exe
     - SDXHelper.exe
     - Registry
-    - pwsh.exe
-    - cmd.exe
-    - python.exe
-    - powershell.exe
     - conhost.exe
 
 dashboard:
   host: "127.0.0.1"
   port: 8001
+  # Optional. If set, WebSocket clients must connect with /ws?token=<value>.
+  auth_token: ""

@@ -1,6 +1,7 @@
 import math
 import collections
 from src.utils.logger import logger
+from src.config import ENTROPY_CHECK_SAMPLES, MIN_FILE_SIZE_FOR_ENTROPY
 
 def calculate_shannon_entropy(data: bytes) -> float:
     """
@@ -27,20 +28,25 @@ def calculate_file_entropy(filepath: str) -> float:
     """
     try:
         with open(filepath, 'rb') as f:
-            # Read first 1KB, Middle 1KB, and Last 1KB to approximate
             file_size = f.seek(0, 2)
             f.seek(0)
+
+            if file_size < MIN_FILE_SIZE_FOR_ENTROPY:
+                return 0.0
             
-            if file_size < 3072: # Small file, read all
+            sample_size = 1024
+            sample_count = max(1, int(ENTROPY_CHECK_SAMPLES))
+
+            if file_size <= sample_size * sample_count:
                 data = f.read()
             else:
-                # Sample beginning, middle, end
-                head = f.read(1024)
-                f.seek(file_size // 2)
-                mid = f.read(1024)
-                f.seek(file_size - 1024)
-                tail = f.read(1024)
-                data = head + mid + tail
+                chunks = []
+                max_offset = file_size - sample_size
+                for idx in range(sample_count):
+                    offset = int((max_offset * idx) / max(sample_count - 1, 1))
+                    f.seek(offset)
+                    chunks.append(f.read(sample_size))
+                data = b"".join(chunks)
                 
         return calculate_shannon_entropy(data)
     except Exception as e:
