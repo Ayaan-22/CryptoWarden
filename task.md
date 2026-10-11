@@ -1,0 +1,6 @@
+- [x] Ignore developer/metadata folders in `src/monitoring/file_monitor.py`
+- [x] Connect `ProcessTracker` to `process_cache` and pass configured host/port to `DashboardBridge` in `src/main.py`
+- [x] Restore safe probabilistic process attribution in `src/main.py`
+- [x] Optimize process cache background refresh loop and direct lookup in `src/utils/process_tools.py`
+- [x] Run unit tests (`pytest`)
+- [x] Run manual verification with the ransomware simulator to ensure successful detection and termination
