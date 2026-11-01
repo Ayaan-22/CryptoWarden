@@ -1,0 +1,18 @@
+# Industry deployment qualification
+
+CryptoWarden 3.1 establishes a safer local monitoring and operator-response baseline. Passing the repository checks does not establish industry-level prevention efficacy. The following gates remain open and must be closed with independently reviewable evidence before claiming a production endpoint prevention product.
+
+| Gate | Required implementation and evidence | Current boundary |
+| --- | --- | --- |
+| Native writer attribution | Windows native collection correlating writes, file-object lifetimes, thread/process instances, and collector generations; explicit event-loss handling; test reader/writer ambiguity, short-lived processes, PID reuse, and concurrent unrelated I/O | Watchdog supplies paths only; UNKNOWN is preserved. Automatic termination is disabled in code. |
+| Detection calibration | Labeled, representative benign and attack-like corpora; precision/recall, false positives per endpoint/day, partial/slow/extensionless behavior, attack family holdouts, and independent review of labels | Explainable multi-file rules with synthetic regression cases; no measured field efficacy claim. |
+| Damage and latency | Realistic burst/soak tests measuring queue loss, CPU/RAM, latency percentiles, and files/bytes changed before confirmed containment across supported storage workloads | Bounded queues/workers, visible overflow and analysis failures; temporary-root integration only. |
+| Strong containment | Stable OS handle/job or equivalent containment with fork/exit/reparent races, descendant coverage, and protected-process checks; adversarial validation | Manual, identity-checked process/descendant snapshots with critical-process refusal; concurrent new descendants can escape a snapshot. |
+| Privilege and service separation | Dedicated Windows service identity, reviewed IPC authorization, installer/uninstaller, service recovery, code signing, trusted upgrade/rollback, and least-privilege operation | Current-user local process; private runtime ACL and OS-held instance lock. Not an anti-tamper boundary against the same user or administrator. |
+| Recovery and data protection | Qualified backup/rollback approach, restore drills, crash consistency, quota/failure behavior, and independent data-integrity testing | No rollback or ransomware recovery feature. Canary cleanup retains changed/replaced files. |
+| Operational acceptance | Supported Windows/Python matrix executed in CI, occupied-port/task-failure tests, multi-day soak, disk-full/permission failures, deployment inventory, alert routing, and operator runbooks | Local Windows/Python 3.11 validation; cross-platform CI is configured, not claimed executed. |
+| Product security review | Independent web/IPC/installer/native collector review, dependency maintenance process, threat model, fuzzing, and abuse/resource limits; accessibility review of the shipped UI | Local session security and bounded delivery are tested. Runtime/dev/npm audits were clean at this validation, not permanently guaranteed. |
+
+Automatic response must remain unavailable until a qualified native collector is implemented and its evidence is bound to the response policy. Changing a constant or relabeling a heuristic association does not close this gate. Operator selection is deliberately recorded as an operator assertion rather than writer proof.
+
+The current implementation should be evaluated as an endpoint monitoring/response candidate in a controlled environment. Production rollout requires a concrete deployment scope, acceptance thresholds, data-retention policy, and a release decision based on the evidence above.

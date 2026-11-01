@@ -1,0 +1,15 @@
+{
+  "name": "cryptowarden-console",
+  "version": "3.1.0",
+  "private": true,
+  "description": "Local endpoint console browser validation",
+  "scripts": {
+    "test:ui": "node node_modules/@playwright/test/cli.js test",
+    "format": "node node_modules/prettier/bin/prettier.cjs --write dashboard",
+    "format:check": "node node_modules/prettier/bin/prettier.cjs --check dashboard"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "prettier": "^3.6.2"
+  }
+}

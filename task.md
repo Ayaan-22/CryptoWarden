@@ -1,6 +1,7 @@
-- [x] Ignore developer/metadata folders in `src/monitoring/file_monitor.py`
-- [x] Connect `ProcessTracker` to `process_cache` and pass configured host/port to `DashboardBridge` in `src/main.py`
-- [x] Restore safe probabilistic process attribution in `src/main.py`
-- [x] Optimize process cache background refresh loop and direct lookup in `src/utils/process_tools.py`
-- [x] Run unit tests (`pytest`)
-- [x] Run manual verification with the ransomware simulator to ensure successful detection and termination
+# CryptoWarden upgrade
+
+- Implement the audited safety, lifecycle, persistence, configuration, dependency, and dashboard corrections.
+- Validate isolated runtime behavior, process-response policy with mocks, desktop/mobile console flows, dependency locks, and distributable assets.
+- Record reproducible results and remaining native attribution, service isolation, containment, recovery, and field-validation release gates.
+
+The detailed completion record is [audit/REMEDIATION.md](audit/REMEDIATION.md). No historical simulator result is accepted as production qualification.

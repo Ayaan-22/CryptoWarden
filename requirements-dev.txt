@@ -1,0 +1,2 @@
+# Hash-locked runtime and development dependencies.
+-r requirements-dev.lock

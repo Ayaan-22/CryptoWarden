@@ -1,82 +1,36 @@
-# CryptoWarden v2.0 - Configuration
-
+# CryptoWarden 3.0 — endpoint console. See README.md for response limitations.
 monitoring:
   directories:
-    - "%USERPROFILE%\\Documents"
-    - "%USERPROFILE%\\Desktop"
-    - "%USERPROFILE%\\Pictures"
-    - "RansomwareTestArea"
-  ignored_extensions:
-    - .tmp
-    - .log
-    - .ini
-    - .lnk
-    - .sys
-    - .dll
-  ignored_directories:
-    - .git
-    - .pytest_cache
-    - __pycache__
-    - .venv
-    - .agents
-    - .gemini
-
+    - "%USERPROFILE%/Documents"
+    - "%USERPROFILE%/Desktop"
+    - "%USERPROFILE%/Pictures"
+  ignored_extensions: [".tmp", ".log"]
+  ignored_directories: [".git", ".venv", ".codex_deps", ".cryptowarden", "__pycache__", ".pytest_cache", ".agents"]
+  queue_capacity: 4096
+  poll_interval: 1.0
 detection:
   max_modifications_per_sec: 5
+  window_seconds: 10
+  min_unique_files: 6
+  rename_threshold: 4
   max_entropy_threshold: 7.5
   min_file_size_for_entropy: 1024
-  entropy_check_samples: 5
-  suspicious_extensions:
-    - .enc
-    - .crypt
-    - .locked
-    - .wannacry
-    - .odin
-    - .zepto
-    - .locky
-    - .aes
-    - .cryptolocker
-
+  entropy_check_samples: 8
+  entropy_timeout: 2.0
+  suspicious_extensions: [".enc", ".crypt", ".locked", ".wannacry", ".odin", ".zepto", ".locky", ".aes", ".cryptolocker"]
 response:
-  # Use "alert_only" to test detections without terminating processes.
-  mode: "terminate"
-  protected_processes:
-    - System
-    - Registry
-    - csrss.exe
-    - wininit.exe
-    - winlogon.exe
-    - services.exe
-    - lsass.exe
-
+  mode: alert_only
+  terminate_tree: false
+  cooldown_seconds: 30
+  protected_processes: ["System", "Registry", "csrss.exe", "wininit.exe", "winlogon.exe", "services.exe", "lsass.exe"]
 whitelist:
-  processes:
-    - explorer.exe
-    - svchost.exe
-    - MsMpEng.exe
-    - csrss.exe
-    - System
-    - Antigravity.exe
-    - Antigravity IDE.exe
-    - codex.exe
-    - SearchIndexer.exe
-    - SupportAssistAgent.exe
-    - Dell.TechHub.exe
-    - chrome.exe
-    - brave.exe
-    - msedge.exe
-    - msedgewebview2.exe
-    - Code.exe
-    - git.exe
-    - pyrefly.exe
-    - pytest.exe
-    - Dell.TechHub.DataManager.exe
-    - SDXHelper.exe
-    - Registry
-    - conhost.exe
-
+  processes: [] # Basename-only trust is not used. Manage identity-scoped rules in the console.
 dashboard:
   host: "127.0.0.1"
   port: 8001
-  # Optional. If set, WebSocket clients must connect with /ws?token=<value>.
-  auth_token: ""
+  auth_token: "" # Generated at startup. Prefer CRYPTOWARDEN_DASHBOARD_TOKEN.
+  session_seconds: 3600
+storage:
+  directory: ".cryptowarden"
+  retention_days: 30
+  max_incidents: 10000

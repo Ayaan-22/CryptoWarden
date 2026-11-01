@@ -1,39 +1,37 @@
-import os
+"""Preview owned canary cleanup; --apply removes only unchanged owned files."""
+
+import argparse
+import json
 import sys
+from pathlib import Path
 
-# Add the project root to sys.path so we can import config
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.config import Settings
+from src.monitoring.honey_pot import CanaryManager
+from src.utils.runtime import InstanceLock
 
-try:
-    from src.config import MONITOR_DIRECTORIES
-    from src.monitoring.honey_pot import HONEY_POT_FILENAMES
-except ImportError:
-    print("Error: Could not find CryptoWarden source. Please run this script from the project root.")
-    sys.exit(1)
 
-def cleanup():
-    print("--- Starting Honey Pot Cleanup ---")
-    count = 0
-    for directory in MONITOR_DIRECTORIES:
-        if not os.path.exists(directory):
-            continue
-            
-        for filename in HONEY_POT_FILENAMES:
-            file_path = os.path.join(directory, filename)
-            if os.path.exists(file_path):
-                try:
-                    # Remove hidden attribute on Windows before deleting
-                    if os.name == 'nt':
-                        import ctypes
-                        ctypes.windll.kernel32.SetFileAttributesW(file_path, 128) # 128 = Normal
-                    
-                    os.remove(file_path)
-                    print(f"  [DELETED] {file_path}")
-                    count += 1
-                except Exception as e:
-                    print(f"  [ERROR] Failed to delete {file_path}: {e}")
-    
-    print(f"\nCleanup complete. Removed {count} files.")
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config")
+    parser.add_argument(
+        "--apply", action="store_true", help="Remove verified owned canaries (default: preview)"
+    )
+    args = parser.parse_args()
+    cfg = Settings.load(args.config).data
+    if not Path(cfg["storage"]["directory"]).exists():
+        print("[]")
+        return
+    lock = InstanceLock(cfg["storage"]["directory"])
+    try:
+        lock.acquire()
+        manager = CanaryManager(cfg["monitoring"]["directories"], cfg["storage"]["directory"])
+        print(json.dumps(manager.cleanup(args.apply), indent=2))
+    except RuntimeError as error:
+        parser.error(str(error))
+    finally:
+        lock.release()
+
 
 if __name__ == "__main__":
-    cleanup()
+    main()

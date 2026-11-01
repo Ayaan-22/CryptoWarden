@@ -13,7 +13,10 @@ venv.bak/
 
 # Environment variables
 .env
-.env.local
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
 
 # IDEs and Editors
 .vscode/
@@ -33,12 +36,44 @@ Thumbs.db
 # Test areas or generated data
 RansomwareTestArea/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
 .coverage
+.coverage.*
 htmlcov/
+/coverage.xml
+/coverage.json
 .codex_deps/
+
+# Machine-local audit and validation output (keep audit reports and tools)
+/audit/evidence/
 
 # Log files (including rotated backups)
 system.log*
 *.log
 
 .agents
+
+# Private engine state and generated monitoring artifacts
+.cryptowarden/
+.cryptowarden-*/
+incidents.sqlite3
+incidents.sqlite3-*
+canaries.json
+engine.lock
+.cw-canary-*
+cryptowarden-incidents*.json
+
+# JavaScript dependencies and browser test output
+node_modules/
+test-results/
+playwright-report/
+blob-report/
+
+# Python packaging output
+*.egg-info/
+.eggs/
+build/
+dist/

@@ -1,0 +1,145 @@
+const { test, expect } = require("@playwright/test");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const key = "browser-test-key-never-use-in-production-12345";
+async function login(page) {
+  await page.goto("/");
+  await page.getByLabel("Console access key").fill(key);
+  await page.getByRole("button", { name: "Unlock console" }).click();
+  await expect(page.getByText("Live connection", { exact: true })).toBeVisible();
+}
+test("login, incident evidence, acknowledgment, export and lock", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await login(page);
+  await expect(page.getByText("DEMONSTRATION DATA", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "test-results/console-desktop.png", fullPage: true });
+  await page.getByRole("button", { name: "View all incidents" }).click();
+  await page.getByLabel("Search incidents").fill("Canary");
+  await expect(page.locator("#incidentRows tr")).toHaveCount(1);
+  await page.locator("#incidentRows .row-open").click();
+  await expect(page.getByText("Unresolved — no writer identity", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Terminate captured process" })).toBeDisabled();
+  await page.getByRole("button", { name: "Acknowledge incident", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Acknowledge incident", exact: true })).toBeDisabled();
+  await page.getByLabel("Close incident details").click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export incidents" }).click();
+  expect((await download).suggestedFilename()).toBe("cryptowarden-incidents.json");
+  await page.getByRole("button", { name: "Lock workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Access your console" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+test("offline assets, mobile layout and health scope", async ({ page }) => {
+  const external = [];
+  page.on("request", request => { if (!request.url().startsWith("http://127.0.0.1") && !request.url().startsWith("ws://127.0.0.1") && !request.url().startsWith("data:")) external.push(request.url()); });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page);
+  await page.screenshot({ path: "test-results/console-mobile.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.locator(".nav-item[data-view='protection']").click();
+  await expect(page.getByRole("heading", { name: "Process context", exact: true })).toBeVisible();
+  await expect(page.getByText("Unavailable — no qualified attribution", { exact: true })).toBeVisible();
+  expect(external).toEqual([]);
+});
+test("bad key does not unlock the console", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Console access key").fill("incorrect");
+  await page.getByRole("button", { name: "Unlock console" }).click();
+  await expect(page.getByText("Invalid access key", { exact: true })).toBeVisible();
+  await expect(page.locator("#app")).toBeHidden();
+});
+
+test("opening the HTML file loads local assets and explains the server connection", async ({ page }) => {
+  const requests = [];
+  const errors = [];
+  page.on("request", request => requests.push(request.url()));
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(pathToFileURL(path.resolve("dashboard/index.html")).href);
+  await expect(page.getByRole("heading", { name: "Open the running console" })).toBeVisible();
+  await expect(page.locator("#loginForm")).toBeHidden();
+  await expect(page.locator("#app")).toBeHidden();
+  await expect(page.getByRole("link", { name: "Open local console" })).toHaveAttribute("href", "http://127.0.0.1:8001/");
+  expect(await page.locator("#loginScreen").evaluate(node => getComputedStyle(node).display)).toBe("flex");
+  expect(await page.locator(".login-brand svg").evaluate(node => getComputedStyle(node).width)).toBe("32px");
+  expect(requests.some(url => url.startsWith("http:") || url.startsWith("ws:"))).toBe(false);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: "test-results/console-file-open.png", fullPage: true });
+});
+
+test("operator can review policy, apply it, pause, resume and restart collection", async ({ page }) => {
+  const errors=[];
+  page.on("pageerror",error=>errors.push(error.message));
+  await login(page);
+  await page.getByRole("button",{name:"Settings and control",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Monitoring controls"})).toBeVisible();
+  await page.getByLabel("Minimum unique files",{exact:true}).fill("9");
+  await page.getByLabel("Reason for this change",{exact:true}).fill("Tune fixture detection thresholds");
+  await page.getByRole("button",{name:"Review changes",exact:true}).click();
+  await expect(page.getByRole("dialog",{name:"Apply protection policy"})).toBeVisible();
+  await expect(page.locator("#policyChanges")).toContainText("detection.min_unique_files");
+  await page.getByLabel("I understand that active collectors will restart and the coverage gap will be recorded.").check();
+  await page.getByRole("button",{name:"Apply reviewed changes"}).click();
+  await expect(page.locator("#policyReviewDialog")).not.toBeVisible();
+  await expect(page.getByLabel("Minimum unique files",{exact:true})).toHaveValue("9");
+  await expect(page.locator("#policyRevision")).toContainText("revision 2");
+  await page.evaluate(()=>scrollTo(0,0));
+  await page.screenshot({path:"test-results/console-management-desktop.png",fullPage:true});
+  await page.getByRole("button",{name:"Pause monitoring",exact:true}).click();
+  await page.getByLabel("Pause duration",{exact:true}).selectOption("0");
+  await page.getByLabel("Reason for this action",{exact:true}).fill("Pause fixture collection for maintenance");
+  await page.getByLabel("I understand that file-change coverage will be interrupted.").check();
+  await page.locator("#monitoringDialog").getByRole("button",{name:"Pause monitoring",exact:true}).click();
+  await expect(page.locator("#monitoringDialog")).not.toBeVisible();
+  await expect(page.locator("#controlStatus")).toContainText("PAUSED");
+  await page.getByRole("button",{name:"Start monitoring",exact:true}).click();
+  await page.getByLabel("Reason for this action",{exact:true}).fill("Resume fixture collection after maintenance");
+  await page.locator("#monitoringDialog").getByRole("button",{name:"Start monitoring",exact:true}).click();
+  await expect(page.locator("#controlStatus")).toContainText("RUNNING");
+  await page.getByRole("button",{name:"Restart collectors",exact:true}).click();
+  await page.getByLabel("Reason for this action",{exact:true}).fill("Verify controlled collector restart");
+  await page.getByLabel("I understand that file-change coverage will be interrupted.").check();
+  await page.locator("#monitoringDialog").getByRole("button",{name:"Restart collectors",exact:true}).click();
+  await expect(page.locator("#monitoringDialog")).not.toBeVisible();
+  await expect(page.locator("#operatorHistory")).toContainText("Collection coverage gap");
+  await expect(page.locator("#policyRevision")).toContainText("revision 5");
+  await page.reload();
+  await page.getByLabel("Console access key").fill(key);
+  await page.getByRole("button",{name:"Unlock console"}).click();
+  await expect(page.getByLabel("Minimum unique files",{exact:true})).toHaveValue("9");
+  expect(errors).toEqual([]);
+});
+
+test("typography and management forms stay readable at desktop and mobile widths",async({page})=>{
+  await login(page);
+  expect(await page.locator("body").evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(16);
+  expect(await page.locator(".metric > div").first().evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(14);
+  expect(await page.locator("td").first().evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(14);
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole("button",{name:"Settings and control",exact:true}).click();
+  await expect(page.getByLabel("Directories to monitor")).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:"test-results/console-management-mobile.png",fullPage:true});
+  expect(await page.getByLabel("Directories to monitor").evaluate(node=>parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(16);
+});
+
+test("manual termination mode requires typed confirmation and never enables automatic response",async({page})=>{
+  await login(page);
+  await page.getByRole("button",{name:"Settings and control",exact:true}).click();
+  await page.getByLabel("Response mode",{exact:true}).selectOption("terminate");
+  await page.getByLabel("Reason for this change",{exact:true}).fill("Review guarded manual-response policy");
+  await page.getByRole("button",{name:"Review changes",exact:true}).click();
+  await expect(page.locator("#terminationConfirmation")).toBeVisible();
+  await page.getByLabel("I understand that active collectors will restart and the coverage gap will be recorded.").check();
+  await page.locator("#terminationPhrase").fill("yes");
+  await page.getByRole("button",{name:"Apply reviewed changes"}).click();
+  await expect(page.locator("#reviewError")).toContainText("Type ENABLE MANUAL TERMINATION exactly");
+  let snapshot=await (await page.request.get("/api/snapshot")).json();
+  expect(snapshot.mode).toBe("alert_only");
+  await page.locator("#terminationPhrase").fill("ENABLE MANUAL TERMINATION");
+  await page.getByRole("button",{name:"Apply reviewed changes"}).click();
+  await expect(page.locator("#policyReviewDialog")).not.toBeVisible();
+  snapshot=await (await page.request.get("/api/snapshot")).json();
+  expect(snapshot.mode).toBe("terminate");
+  expect(snapshot.automatic_termination).toBe(false);
+});

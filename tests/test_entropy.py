@@ -2,35 +2,34 @@
 Unit tests for the CryptoWarden Entropy Calculator.
 Validates Shannon entropy computation across various data patterns.
 """
-import sys
+
 import os
+import sys
 import tempfile
-import struct
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import pytest
-from src.analysis.entropy import calculate_shannon_entropy, calculate_file_entropy
+from src.analysis.entropy import calculate_file_entropy, calculate_shannon_entropy
 
 
 class TestShannonEntropy:
     """Tests for the core entropy calculation algorithm."""
 
     def test_empty_data_returns_zero(self):
-        assert calculate_shannon_entropy(b'') == 0.0
+        assert calculate_shannon_entropy(b"") == 0.0
 
     def test_single_byte_returns_zero(self):
         """A single byte has no uncertainty."""
-        assert calculate_shannon_entropy(b'\x00') == 0.0
+        assert calculate_shannon_entropy(b"\x00") == 0.0
 
     def test_uniform_data_returns_zero(self):
         """All identical bytes = no randomness."""
-        data = b'\xAA' * 1024
+        data = b"\xaa" * 1024
         assert calculate_shannon_entropy(data) == 0.0
 
     def test_two_equal_values_returns_one(self):
         """50/50 split of two values = 1.0 bit of entropy."""
-        data = b'\x00\x01' * 512
+        data = b"\x00\x01" * 512
         entropy = calculate_shannon_entropy(data)
         assert abs(entropy - 1.0) < 0.01
 
@@ -50,6 +49,7 @@ class TestShannonEntropy:
     def test_entropy_bounded_0_to_8(self):
         """Entropy of byte data is always between 0.0 and 8.0."""
         import random
+
         for _ in range(10):
             data = bytes(random.randint(0, 255) for _ in range(1000))
             entropy = calculate_shannon_entropy(data)
@@ -89,6 +89,7 @@ class TestFileEntropy:
     def test_random_binary_file(self):
         """File with random bytes should have high entropy (simulates encrypted data)."""
         import random
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
             f.write(bytes(random.randint(0, 255) for _ in range(4096)))
             path = f.name
