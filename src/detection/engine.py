@@ -1,65 +1,55 @@
-from src.config import (
-    MAX_FILE_MODIFICATIONS_PER_SEC, 
-    MAX_ENTROPY_THRESHOLD,
-    WHITELISTED_PROCESSES
-)
-from src.utils.logger import logger
+"""Explainable multi-file heuristics; a detection never establishes writer identity."""
+
+from pathlib import Path
+
+from src.config import config
+from src.models import DetectionResult
+
 
 class DetectionEngine:
-    def __init__(self):
-        pass
+    def __init__(self, settings=None):
+        self.settings = settings or config["detection"]
 
-    def analyze_behavior(self, process_state, current_file_entropy=0.0, is_honey_pot=False, target_path=None):
-        """
-        Returns a tuple (is_ransomware: bool, reason: str)
-        """
-        if process_state.name in WHITELISTED_PROCESSES:
-            return False, "Whitelisted"
+    def evaluate(
+        self,
+        state,
+        current_file_entropy=None,
+        is_honey_pot=False,
+        target_path=None,
+        entropy_delta=None,
+    ):
+        state.prune()
+        d = self.settings
+        modifications, renames = state.unique_modifications(), state.unique_renames()
+        fanout = max(modifications, renames) >= d["min_unique_files"]
+        rapid = state.get_modification_rate() >= d["max_modifications_per_sec"]
+        mass_rename = renames >= d["rename_threshold"]
+        suspicious = bool(
+            target_path and Path(target_path).suffix.casefold() in d["suspicious_extensions"]
+        )
+        high_entropy = (
+            current_file_entropy is not None and current_file_entropy > d["max_entropy_threshold"]
+        )
+        transition = high_entropy and entropy_delta is not None and entropy_delta >= 1.5
+        signals, score = [], 0
+        for matches, weight, text in [
+            (is_honey_pot, 100, "Canary integrity event"),
+            (rapid and fanout, 25, f"Rapid modification across {modifications} files"),
+            (mass_rename, 35, f"Renaming across {renames} files"),
+            (suspicious, 25, "Suspicious extension"),
+            (high_entropy and fanout, 20, "High entropy across a multi-file sequence"),
+            (transition and fanout, 20, "Observed entropy increase"),
+        ]:
+            if matches:
+                score += weight
+                signals.append(text)
+        # IO is context only: common archive/database activity must not authorize detection.
+        detected = is_honey_pot or (fanout and score >= 55) or (mass_rename and suspicious)
+        severity = "critical" if is_honey_pot else "high" if detected else "medium"
+        return DetectionResult(detected, min(score, 100), tuple(signals), severity)
 
-        score = 0
-        reasons = []
-
-        # Rule 1: Rapid File Modification
-        mod_rate = process_state.get_modification_rate()
-        if mod_rate > MAX_FILE_MODIFICATIONS_PER_SEC:
-            score += 5
-            reasons.append(f"Rapid Modification ({mod_rate} files/10s)")
-
-        # Rule 1.5: High IO Write Rate
-        if process_state.io_write_rate > 50: # Critical IO
-            score += 10
-            reasons.append(f"Extreme IO Write Rate ({process_state.io_write_rate:.2f} ops/s)")
-        elif process_state.io_write_rate > 5: # Suspicious IO
-            score += 3
-            reasons.append(f"High IO Write Rate ({process_state.io_write_rate:.2f} ops/s)")
-
-        # Rule 2: High Entropy Write (Encryption)
-        if current_file_entropy > MAX_ENTROPY_THRESHOLD:
-            score += 4
-            reasons.append(f"High Entropy Write ({current_file_entropy:.2f})")
-            
-        # Rule 3: Mass Renaming
-        if len(process_state.renames) > 3:
-            score += 6
-            reasons.append(f"Rapid Renaming ({len(process_state.renames)} files/10s)")
-
-        # Rule 4: Suspicious Extension Change
-        if target_path:
-            ext = target_path.split('.')[-1].lower()
-            suspicious_exts = {'enc', 'crypt', 'locked', 'wannacry', 'odin', 'zepto', 'locky', 'aes', 'cryptolocker'}
-            if ext in suspicious_exts:
-                score += 8
-                reasons.append(f"Suspicious Extension Change (.{ext})")
-
-        # Rule 5: Honey-pot / Canary File Access
-        if is_honey_pot:
-            score += 10
-            reasons.append("Canary File Modification Detected")
-
-        # Decision
-        if score >= 6:
-            # Harder block if multiple factors exist
-            if len(reasons) >= 2 or score >= 10:
-                return True, " & ".join(reasons)
-            
-        return False, None
+    def analyze_behavior(
+        self, process_state, current_file_entropy=0.0, is_honey_pot=False, target_path=None
+    ):
+        result = self.evaluate(process_state, current_file_entropy, is_honey_pot, target_path)
+        return result.detected, result.reason or None

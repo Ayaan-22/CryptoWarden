@@ -1,70 +1,57 @@
-import os
-import time
-import random
-import string
+"""Create attack-like file patterns only inside a fresh, owned temporary directory.
+This does not encrypt user files, select processes, or assert prevention success.
+"""
+
+import argparse
+import json
 import secrets
-from concurrent.futures import ThreadPoolExecutor
+import sys
+import tempfile
+import time
+from pathlib import Path
 
-# Configuration
-TEST_DIR = os.path.join(os.getcwd(), "RansomwareTestArea")
-NUM_FILES = 200 # Increase to ensure it runs for > 5 seconds
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.monitoring.honey_pot import safe_root
 
-def create_dummy_files():
-    if os.path.exists(TEST_DIR):
-        # Cleanup
-        for f in os.listdir(TEST_DIR):
-            try:
-                os.remove(os.path.join(TEST_DIR, f))
-            except: pass
-    else:
-        os.makedirs(TEST_DIR)
-    
-    print(f"Creating {NUM_FILES} dummy files in {TEST_DIR}...")
-    for i in range(NUM_FILES):
-        filename = os.path.join(TEST_DIR, f"doc_{i}.txt")
-        with open(filename, "w") as f:
-            # Write some low entropy text
-            f.write("This is a sensitive document. " * 50)
-        time.sleep(0.01)
-            
-def encrypt_file(filepath):
-    try:
-        print(f"Encrypting {filepath}...")
-        # Read content
-        with open(filepath, "rb") as f:
-            data = f.read()
-        
-        # Simulate Encryption (High Entropy)
-        # Just write random bytes of same length
-        encrypted_data = secrets.token_bytes(len(data))
-        
-        # Overwrite file
-        with open(filepath, "wb") as f:
-            f.write(encrypted_data)
-            
-        # Rename
-        new_path = filepath + ".enc"
-        os.rename(filepath, new_path)
-        print(f"Renamed to {new_path}")
-    except Exception as e:
-        print(f"Failed to encrypt {filepath}: {e}")
 
-def run_simulation():
-    print("Starting Ransomware Simulation...")
-    print(f"PID: {os.getpid()}")
-    create_dummy_files()
-    time.sleep(2) # Wait a bit
-    
-    files = [os.path.join(TEST_DIR, f) for f in os.listdir(TEST_DIR) if f.endswith(".txt")]
-    
-    # Rapidly encrypt files
-    # We do it sequentially or parallel. Real ransomware is often threaded.
-    # Let's simple loop to ensure PID is captured easily.
-    for f in files:
-        encrypt_file(f)
-        time.sleep(0.05)
+def run_simulation(directory, files=20, delay=0.03):
+    root = Path(directory).resolve(strict=True)
+    if not safe_root(root):
+        raise ValueError("Simulation requires a local non-reparse directory")
+    if not 6 <= files <= 500 or not 0 <= delay <= 1:
+        raise ValueError("Use 6–500 files and a delay of 0–1 seconds")
+    with tempfile.TemporaryDirectory(prefix="CryptoWardenSimulation-", dir=root) as workspace:
+        owned = Path(workspace).resolve()
+        if owned.parent != root or not owned.name.startswith("CryptoWardenSimulation-"):
+            raise RuntimeError("Simulation workspace escaped its intended root")
+        for index in range(files):
+            path = owned / f"fixture-{index:03d}.txt"
+            with open(path, "xb") as stream:
+                stream.write(b"Disposable simulation fixture. " * 256)
+        for path in sorted(owned.glob("fixture-*.txt")):
+            path.write_bytes(secrets.token_bytes(8192))
+            path.rename(path.with_suffix(".txt.enc"))
+            time.sleep(delay)
+        return {
+            "status": "simulation_completed",
+            "owned_fixture_files": files,
+            "scope": str(owned),
+            "prevention_claim": False,
+            "next_step": "Inspect the incident journal; process survival does not determine detection success.",
+        }
 
-    print("Simulation Complete. If I am still running, detection failed.")
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--directory",
+        required=True,
+        help="An existing protected root for a NEW disposable subdirectory",
+    )
+    parser.add_argument("--files", type=int, default=20)
+    args = parser.parse_args()
+    print(json.dumps(run_simulation(args.directory, args.files), indent=2))
+
 
 if __name__ == "__main__":
-    run_simulation()
+    main()

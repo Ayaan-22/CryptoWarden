@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cryptowarden"
+version = "3.1.0"
+description = "Local endpoint file-activity monitoring and evidence-led incident response"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "starlette>=1.8,<2", "anyio>=4.14.2,<5", "uvicorn>=0.54,<1",
+  "watchdog>=6,<7", "psutil>=7.2.2,<8", "PyYAML>=6.0.3,<7", "websockets>=16,<17",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9,<10", "pytest-cov>=7,<8", "httpx>=0.28.1,<1", "httpx2>=2.16,<3", "ruff>=0.17,<1", "build>=1.6,<2"]
+
+[project.scripts]
+cryptowarden = "src.main:main"
+
+[tool.setuptools.packages.find]
+include = ["src*", "dashboard*"]
+
+[tool.setuptools.package-data]
+dashboard = ["*.html", "*.css", "*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B"]
+
+[tool.coverage.run]
+source = ["src"]

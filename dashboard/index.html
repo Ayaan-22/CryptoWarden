@@ -1,163 +1,966 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CryptoWarden — Threat Intelligence Dashboard</title>
-    <meta name="description" content="Real-time ransomware detection and prevention dashboard">
-    <link rel="stylesheet" href="dashboard.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-</head>
-<body>
-<div class="app">
-
-    <!-- ─── Navbar ─── -->
-    <nav class="navbar">
-        <div class="nav-brand">
-            <div class="nav-logo">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </div>
-            <span class="nav-title">CryptoWarden</span>
-            <span class="nav-version">v2.1</span>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CryptoWarden — Endpoint Console</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./dashboard.css" />
+    <script src="./dashboard.js" defer></script>
+  </head>
+  <body>
+    <svg class="icon-library" aria-hidden="true">
+      <defs>
+        <symbol id="i-shield" viewBox="0 0 24 24">
+          <path d="M12 3 3.5 6v6c0 5 8.5 9 8.5 9s8.5-4 8.5-9V6L12 3Z" />
+          <path d="m8 12 3 3 5-6" />
+        </symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        </symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24">
+          <path
+            d="m10 4-8 14a2 2 0 0 0 2 3h16a2 2 0 0 0 2-3L14 4a2.3 2.3 0 0 0-4 0Z"
+          />
+          <path d="M12 9v4m0 3v.5" />
+        </symbol>
+        <symbol id="i-pulse" viewBox="0 0 24 24">
+          <path d="M2 12h5l3-8 4 16 3-8h5" />
+        </symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24">
+          <path d="M3 7V5h6l2 2h10v13H3Z" />
+        </symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24">
+          <path d="M5 12h14m-5-5 5 5-5 5" />
+        </symbol>
+        <symbol id="i-download" viewBox="0 0 24 24">
+          <path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4" />
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24">
+          <path d="m5 12 4 4L19 6" />
+        </symbol>
+        <symbol id="i-search" viewBox="0 0 24 24">
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="m16 16 5 5" />
+        </symbol>
+        <symbol id="i-lock" viewBox="0 0 24 24">
+          <rect x="5" y="10" width="14" height="11" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3" />
+        </symbol>
+        <symbol id="i-controls" viewBox="0 0 24 24">
+          <path d="M3 6h7m4 0h7M3 12h12m4 0h2M3 18h2m4 0h12" />
+          <circle cx="12" cy="6" r="2" />
+          <circle cx="17" cy="12" r="2" />
+          <circle cx="7" cy="18" r="2" />
+        </symbol>
+      </defs>
+    </svg>
+    <div id="loginScreen" class="login-screen">
+      <div class="login-brand">
+        <svg><use href="#i-shield" /></svg>CryptoWarden
+        <span class="version">3.1</span>
+      </div>
+      <div class="login-layout">
+        <div class="login-intro">
+          <div class="eyebrow">ENDPOINT DEFENSE / LOCAL CONSOLE</div>
+          <h1>Know what changed.<br /><span>Respond with evidence.</span></h1>
+          <p>
+            A clearer view of your files, your protection coverage, and the
+            incidents that need your attention.
+          </p>
+          <div class="login-assurance">
+            <svg><use href="#i-lock" /></svg>Private to this device. No cloud
+            connection required.
+          </div>
         </div>
-        <div class="nav-right">
-            <span id="navClock" class="nav-clock">--:--:--</span>
-            <div id="connectionBadge" class="connection-badge">
-                <span class="connection-dot"></span>
-                <span id="connectionText">Offline</span>
-            </div>
-        </div>
-    </nav>
-
-    <!-- ─── Dashboard ─── -->
-    <main class="dashboard">
-
-        <!-- Stats Row -->
-        <section class="stats-row">
-            <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-label">Files Scanned</span>
-                    <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>
-                </div>
-                <div id="scannedCount" class="stat-value">0</div>
-                <div class="stat-subtitle"><span id="eventsPerMin">0</span> events/min</div>
-            </div>
-            <div class="stat-card threat">
-                <div class="stat-header">
-                    <span class="stat-label">Threats Blocked</span>
-                    <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
-                </div>
-                <div id="blockedCount" class="stat-value">0</div>
-                <div class="stat-subtitle">Ransomware attempts neutralized</div>
-            </div>
-            <div class="stat-card health">
-                <div class="stat-header">
-                    <span class="stat-label">System Health</span>
-                    <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-                </div>
-                <div id="healthStatus" class="stat-value" style="color: var(--accent-green);">Secure</div>
-                <div class="stat-subtitle">All systems nominal</div>
-            </div>
-            <div class="stat-card uptime">
-                <div class="stat-header">
-                    <span class="stat-label">Session Uptime</span>
-                    <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-                </div>
-                <div id="uptimeValue" class="stat-value">00:00:00</div>
-                <div class="stat-subtitle">Time since connection</div>
-            </div>
+        <form id="loginForm" class="login-card">
+          <span class="section-kicker">SECURE WORKSPACE</span>
+          <h2>Access your console</h2>
+          <p>Enter the access key shown when your engine starts.</p>
+          <label for="accessKey">Console access key</label
+          ><input
+            id="accessKey"
+            type="password"
+            autocomplete="off"
+            required
+            placeholder="Paste your access key"
+          /><button type="submit" class="button primary wide">
+            Unlock console <svg><use href="#i-arrow" /></svg>
+          </button>
+          <p id="loginError" class="form-error" role="alert"></p>
+          <div class="login-note">
+            <span class="status-dot"></span>Local session · authenticated access
+          </div>
+        </form>
+        <section id="fileOpenNotice" class="login-card" hidden>
+          <span class="section-kicker">LOCAL FILE PREVIEW</span>
+          <h2>Open the running console</h2>
+          <p>
+            Start the CryptoWarden engine, then open its local console address
+            to sign in.
+          </p>
+          <a class="button primary wide" href="http://127.0.0.1:8001/">
+            Open local console <svg><use href="#i-arrow" /></svg>
+          </a>
+          <p>
+            The default address is http://127.0.0.1:8001/. If you configured
+            another port, use the address printed by the engine.
+          </p>
         </section>
-
-        <!-- Tab Bar -->
-        <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
-            <button class="tab-btn" onclick="switchTab('activity')">Activity Log</button>
-            <button class="tab-btn" onclick="switchTab('threats')">Threats</button>
+      </div>
+      <footer>CRYPTOWARDEN <span>Evidence before action.</span></footer>
+    </div>
+    <div id="app" class="app" hidden>
+      <aside class="sidebar">
+        <a href="#overview" class="brand"
+          ><svg><use href="#i-shield" /></svg
+          ><span>CryptoWarden<small>ENDPOINT CONSOLE</small></span></a
+        >
+        <div class="workspace">
+          <span class="avatar">LW</span>
+          <div>
+            Local workspace<small id="workspaceType">This device</small>
+          </div>
+          <span class="status-dot"></span>
         </div>
-
-        <!-- ═══ Tab 1: Overview (Charts + Summary) ═══ -->
-        <div id="tab-overview" class="tab-content active">
-            <div class="chart-row">
-                <div class="panel">
-                    <div class="panel-header">
-                        <div class="panel-title">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                            Events / Minute
-                        </div>
-                    </div>
-                    <div class="chart-container"><canvas id="epmChart"></canvas></div>
-                </div>
-                <div class="panel">
-                    <div class="panel-header">
-                        <div class="panel-title">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            Event Type Distribution
-                        </div>
-                    </div>
-                    <div class="chart-container"><canvas id="typeChart"></canvas></div>
-                </div>
+        <div class="nav-label">WORKSPACE</div>
+        <nav aria-label="Main navigation">
+          <button
+            class="nav-item active"
+            data-view="overview"
+            aria-label="Overview"
+          >
+            <svg><use href="#i-grid" /></svg><span>Overview</span></button
+          ><button
+            class="nav-item"
+            data-view="incidents"
+            aria-label="Incidents"
+          >
+            <svg><use href="#i-alert" /></svg><span>Incidents</span
+            ><b id="navIncidentCount">0</b></button
+          ><button
+            class="nav-item"
+            data-view="activity"
+            aria-label="Activity stream"
+          >
+            <svg><use href="#i-pulse" /></svg
+            ><span>Activity stream</span></button
+          ><button
+            class="nav-item"
+            data-view="protection"
+            aria-label="Protection and rules"
+          >
+            <svg><use href="#i-shield" /></svg
+            ><span>Protection &amp; rules</span>
+          </button>
+          <button
+            class="nav-item"
+            data-view="settings"
+            aria-label="Settings and control"
+          >
+            <svg><use href="#i-controls" /></svg
+            ><span>Settings &amp; control</span>
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="engine-tile">
+            <div>
+              <span id="engineDot" class="status-dot muted"></span
+              ><strong id="engineState">Connecting</strong>
             </div>
-            <!-- Recent threats summary -->
-            <div class="panel">
-                <div class="panel-header">
-                    <div class="panel-title" style="color: var(--accent-red);">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-red)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        Recent Alerts
-                        <span id="alertCounterOverview" style="display:none;background:var(--accent-red);color:white;font-size:0.6rem;padding:1px 6px;border-radius:99px;">0</span>
-                    </div>
-                </div>
-                <div id="overviewAlerts" class="panel-body" style="max-height:200px;">
-                    <div class="panel-empty">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                        No alerts yet. System is clean.
-                    </div>
-                </div>
-            </div>
+            <p id="engineMode">Waiting for engine state</p>
+            <small>VERSION 3.1.0</small>
+          </div>
+          <button id="logoutButton" class="logout">
+            Lock workspace <svg><use href="#i-lock" /></svg>
+          </button>
         </div>
-
-        <!-- ═══ Tab 2: Activity Log (Full Feed) ═══ -->
-        <div id="tab-activity" class="tab-content">
-            <div class="panel" style="min-height:520px;">
-                <div class="panel-header">
-                    <div class="panel-title">
-                        <span class="dot"></span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                        Live Activity Feed
-                    </div>
-                    <button class="btn" onclick="clearFeed()">Clear</button>
-                </div>
-                <div id="feedContent" class="panel-body">
-                    <div class="panel-empty">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                        Waiting for file system events...
-                    </div>
-                </div>
+      </aside>
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="breadcrumb">
+            Workspace <span>/</span><strong id="breadcrumb">Overview</strong>
+          </div>
+          <div class="topbar-right">
+            <span id="demoBadge" class="badge blue" hidden
+              >DEMONSTRATION DATA</span
+            ><span class="connection"
+              ><span id="connectionDot" class="status-dot muted"></span
+              ><span id="connectionLabel">Connecting</span></span
+            ><span class="avatar user">LO</span>
+          </div>
+        </header>
+        <main>
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow">YOUR ENDPOINT, IN FOCUS</div>
+              <h1 id="pageTitle">
+                Security overview<span class="heading-dot">.</span>
+              </h1>
+              <p id="pageDescription">
+                Visibility into file activity and the evidence behind every
+                alert.
+              </p>
             </div>
-        </div>
-
-        <!-- ═══ Tab 3: Threats (Full Alerts) ═══ -->
-        <div id="tab-threats" class="tab-content">
-            <div class="panel" style="min-height:520px;border-color:rgba(239,68,68,0.1);">
-                <div class="panel-header">
-                    <div class="panel-title" style="color: var(--accent-red);">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-red)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        Active Threats
-                        <span id="alertCounter" style="display:none;background:var(--accent-red);color:white;font-size:0.6rem;padding:1px 6px;border-radius:99px;min-width:18px;text-align:center;">0</span>
-                    </div>
-                    <button class="btn btn-danger" onclick="clearAlerts()">Dismiss All</button>
-                </div>
-                <div id="alertsContent" class="panel-body">
-                    <div class="panel-empty">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                        No active threats. System is clean.
-                    </div>
-                </div>
+            <button id="exportButton" class="button">
+              <svg><use href="#i-download" /></svg>Export incidents
+            </button>
+          </div>
+          <div id="offlineBanner" class="banner" hidden>
+            <svg><use href="#i-alert" /></svg>
+            <div>
+              <strong>Engine connection lost</strong
+              ><span>Showing the last received state. Reconnecting…</span>
             </div>
+          </div>
+          <section id="overviewView" class="view">
+            <div id="postureBanner" class="posture">
+              <span class="posture-icon"
+                ><svg><use href="#i-shield" /></svg
+              ></span>
+              <div>
+                <strong id="postureTitle">Checking endpoint status</strong>
+                <p id="postureText">Waiting for a fresh engine snapshot.</p>
+              </div>
+              <span id="postureBadge" class="badge">CONNECTING</span>
+            </div>
+            <div class="metrics">
+              <article class="metric">
+                <div>
+                  File events analyzed<svg><use href="#i-folder" /></svg>
+                </div>
+                <strong id="scannedCount">—</strong
+                ><small id="eventRate">Waiting for telemetry</small>
+              </article>
+              <article class="metric">
+                <div>
+                  Open incidents<svg><use href="#i-alert" /></svg>
+                </div>
+                <strong id="incidentCount">—</strong
+                ><small id="incidentHint">Evidence awaiting review</small>
+              </article>
+              <article class="metric">
+                <div>
+                  Confirmed terminations<svg><use href="#i-check" /></svg>
+                </div>
+                <strong id="blockedCount">—</strong
+                ><small>Verified process exits this session</small>
+              </article>
+              <article class="metric">
+                <div>
+                  Healthy canaries<svg><use href="#i-shield" /></svg>
+                </div>
+                <strong id="canaryCount">—</strong
+                ><small id="canaryHint">Integrity coverage</small>
+              </article>
+            </div>
+            <div class="overview-grid">
+              <section class="panel chart-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>File activity</h2>
+                    <p>Analyzed events per second · last 60 seconds</p>
+                  </div>
+                  <span class="legend"><i></i>File events</span>
+                </div>
+                <div class="chart-wrap">
+                  <div class="chart-scale">
+                    <span id="chartMax">10</span><span id="chartMid">5</span
+                    ><span>0</span>
+                  </div>
+                  <svg
+                    id="activityChart"
+                    viewBox="0 0 700 170"
+                    preserveAspectRatio="none"
+                    role="img"
+                    aria-label="File events per second over the last minute"
+                  >
+                    <defs>
+                      <linearGradient
+                        id="chartFill"
+                        x1="0"
+                        x2="0"
+                        y1="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stop-color="#2878ef"
+                          stop-opacity=".18"
+                        />
+                        <stop
+                          offset="100%"
+                          stop-color="#2878ef"
+                          stop-opacity="0"
+                        />
+                      </linearGradient>
+                    </defs>
+                    <path class="chart-grid" d="M0 10H700M0 85H700M0 160H700" />
+                    <path id="chartArea" fill="url(#chartFill)" />
+                    <path id="chartLine" class="chart-line" />
+                  </svg>
+                </div>
+                <div class="chart-labels">
+                  <span>60s ago</span><span>45s</span><span>30s</span
+                  ><span>15s</span><span>Now</span>
+                </div>
+                <div class="chart-footer">
+                  <span>COLLECTOR</span><strong>Filesystem notifications</strong
+                  ><span class="badge neutral"
+                    >Writer identity unavailable</span
+                  >
+                </div>
+              </section>
+              <section class="panel coverage-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>Protection posture</h2>
+                    <p>Measured coverage, clearly stated.</p>
+                  </div>
+                  <svg><use href="#i-shield" /></svg>
+                </div>
+                <div class="coverage-ring">
+                  <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="ring-track" cx="60" cy="60" r="49" />
+                    <circle
+                      id="coverageArc"
+                      class="ring-progress"
+                      cx="60"
+                      cy="60"
+                      r="49"
+                    />
+                  </svg>
+                  <div>
+                    <strong id="rootCount">—</strong
+                    ><span>protected roots</span>
+                  </div>
+                </div>
+                <div class="coverage-row">
+                  <span>Response policy</span
+                  ><strong id="policyLabel">—</strong>
+                </div>
+                <div class="coverage-row">
+                  <span>Automatic termination</span
+                  ><strong class="text-amber">Unavailable</strong>
+                </div>
+                <p class="coverage-note">
+                  Automatic response requires qualified native writer
+                  attribution. Alerts remain available.
+                </p>
+              </section>
+            </div>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>
+                    Incident queue
+                    <span id="overviewIncidentCount" class="count-tag">0</span>
+                  </h2>
+                  <p>Recent evidence and recorded response outcomes.</p>
+                </div>
+                <button class="text-button" data-view="incidents">
+                  View all incidents <svg><use href="#i-arrow" /></svg>
+                </button>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>SEVERITY</th>
+                      <th>DETECTION</th>
+                      <th>ACTOR</th>
+                      <th>OUTCOME</th>
+                      <th>OBSERVED</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="overviewIncidentRows"></tbody>
+                </table>
+              </div>
+              <div id="overviewEmpty" class="empty">
+                <svg><use href="#i-shield" /></svg
+                ><strong>No incidents recorded</strong>
+                <p>Detections appear with evidence and response outcomes.</p>
+              </div>
+            </section>
+          </section>
+          <section id="incidentsView" class="view" hidden>
+            <div class="toolbar">
+              <label class="search"
+                ><svg><use href="#i-search" /></svg
+                ><input
+                  id="incidentSearch"
+                  placeholder="Search detections, paths, or actors"
+                  aria-label="Search incidents" /></label
+              ><select id="incidentFilter" aria-label="Filter incidents">
+                <option value="all">All incidents</option>
+                <option value="open">Open</option>
+                <option value="resolved">Acknowledged</option>
+                <option value="critical">Critical severity</option>
+                <option value="high">High severity</option></select
+              ><span id="incidentResultCount" class="subtle"></span>
+            </div>
+            <section class="panel">
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>SEVERITY</th>
+                      <th>DETECTION</th>
+                      <th>ACTOR</th>
+                      <th>OUTCOME</th>
+                      <th>OBSERVED</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="incidentRows"></tbody>
+                </table>
+              </div>
+              <div id="incidentEmpty" class="empty">
+                <svg><use href="#i-search" /></svg
+                ><strong>No matching incidents</strong>
+                <p>Try another search or wait for new evidence.</p>
+              </div>
+            </section>
+          </section>
+          <section id="activityView" class="view" hidden>
+            <div class="toolbar">
+              <div class="stream-label">
+                <span class="status-dot"></span
+                ><span id="activityModeLabel">Live file activity</span>
+                <span class="subtle">Latest 200 observations</span>
+              </div>
+              <button id="pauseButton" class="button">Pause view</button>
+            </div>
+            <section class="panel">
+              <div id="activityList"></div>
+              <div id="activityEmpty" class="empty">
+                <svg><use href="#i-pulse" /></svg
+                ><strong>Listening for file activity</strong>
+                <p>
+                  Events appear as protected files change. An empty stream does
+                  not prove an idle endpoint.
+                </p>
+              </div>
+            </section>
+          </section>
+          <section id="protectionView" class="view" hidden>
+            <div class="protection-grid">
+              <section class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>Protected directories</h2>
+                    <p>Resolved monitoring scope on this endpoint.</p>
+                  </div>
+                  <svg><use href="#i-folder" /></svg>
+                </div>
+                <div id="directoryList"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>Engine health</h2>
+                    <p>Collector and processing status.</p>
+                  </div>
+                </div>
+                <dl id="healthList"></dl>
+              </section>
+            </div>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Executable rules</h2>
+                  <p>
+                    Identity-scoped records. Canary incidents are never silently
+                    exempted.
+                  </p>
+                </div>
+              </div>
+              <div id="ruleList"></div>
+              <div id="ruleEmpty" class="empty small">
+                <svg><use href="#i-lock" /></svg
+                ><strong>No executable rules</strong>
+                <p>
+                  Name-only whitelisting is disabled. Rules require a captured
+                  process identity and executable fingerprint.
+                </p>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Process context</h2>
+                  <p>
+                    Recent I/O is investigation context. It does not prove who
+                    changed a file.
+                  </p>
+                </div>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>PROCESS</th>
+                      <th>PID</th>
+                      <th>WRITES / SEC</th>
+                      <th>BYTES / SEC</th>
+                    </tr>
+                  </thead>
+                  <tbody id="processRows"></tbody>
+                </table>
+              </div>
+              <div id="processEmpty" class="empty small">
+                No active writers in the last sample.
+              </div>
+            </section>
+          </section>
+          <section id="settingsView" class="view" hidden>
+            <section class="panel control-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Monitoring controls</h2>
+                  <p>The console stays available when collection is paused.</p>
+                </div>
+                <span id="controlStatus" class="badge neutral"
+                  >Waiting for engine</span
+                >
+              </div>
+              <div class="control-body">
+                <p id="controlDescription">Waiting for monitoring state.</p>
+                <div class="control-actions">
+                  <button id="monitorToggle" class="button primary" disabled>
+                    Start monitoring</button
+                  ><button id="monitorRestart" class="button" disabled>
+                    Restart collectors</button
+                  ><span id="policyRevision" class="subtle"></span>
+                </div>
+                <p
+                  id="controlError"
+                  class="form-error"
+                  role="status"
+                  hidden
+                ></p>
+              </div>
+            </section>
+            <form id="policyForm">
+              <div class="settings-heading">
+                <div>
+                  <h2>Protection policy</h2>
+                  <p>
+                    Review and apply changes here. Saved policy persists across
+                    engine restarts.
+                  </p>
+                </div>
+                <button id="reloadPolicy" type="button" class="button">
+                  Reload saved policy
+                </button>
+              </div>
+              <div id="policyConflict" class="banner" hidden>
+                <div>
+                  <strong>A newer policy is available</strong
+                  ><span
+                    >Another session changed the saved revision. Reload it
+                    before applying your edits.</span
+                  >
+                </div>
+              </div>
+              <div class="settings-grid">
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>Protected directories</h2>
+                      <p>
+                        Use an existing absolute local path on each line. Up to
+                        32 roots; no overlapping roots.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="settings-fields">
+                    <label for="policyDirectories">Directories to monitor</label
+                    ><textarea
+                      id="policyDirectories"
+                      data-policy="monitoring.directories"
+                      rows="6"
+                      required
+                      spellcheck="false"
+                    ></textarea
+                    ><label for="policyIgnoredExtensions"
+                      >Ignored extensions, one per line</label
+                    ><textarea
+                      id="policyIgnoredExtensions"
+                      data-policy="monitoring.ignored_extensions"
+                      rows="3"
+                      spellcheck="false"
+                    ></textarea
+                    ><label for="policyIgnoredDirectories"
+                      >Ignored directory names, one per line</label
+                    ><textarea
+                      id="policyIgnoredDirectories"
+                      data-policy="monitoring.ignored_directories"
+                      rows="4"
+                      spellcheck="false"
+                    ></textarea>
+                    <p class="field-help">
+                      Exclusions reduce coverage. Canary integrity events remain
+                      prioritized. Removed roots retain owned canaries for
+                      reviewed cleanup.
+                    </p>
+                  </div>
+                </section>
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h2>Response policy</h2>
+                      <p>
+                        Explicit operator actions remain separate from
+                        unverified file-writer attribution.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="settings-fields">
+                    <label for="policyMode">Response mode</label
+                    ><select id="policyMode" data-policy="response.mode">
+                      <option value="alert_only">
+                        Alert only — record incidents
+                      </option>
+                      <option value="dry_run">
+                        Dry run — no process termination
+                      </option>
+                      <option value="terminate">
+                        Manual termination — operator requested
+                      </option></select
+                    ><label class="checkbox-label" for="policyTree"
+                      ><input
+                        id="policyTree"
+                        type="checkbox"
+                        data-policy="response.terminate_tree"
+                      />Include captured descendants in manual response</label
+                    >
+                    <p class="field-help">
+                      Each captured target is checked against process identity
+                      and critical-process safeguards.
+                    </p>
+                    <label for="policyCooldown"
+                      >Repeat-alert cooldown (seconds)</label
+                    ><input
+                      id="policyCooldown"
+                      type="number"
+                      min="1"
+                      max="3600"
+                      step="1"
+                      data-policy="response.cooldown_seconds"
+                      required
+                    /><label for="policyPoll"
+                      >Process-context sampling interval (seconds)</label
+                    ><input
+                      id="policyPoll"
+                      type="number"
+                      min="0.2"
+                      max="60"
+                      step="0.1"
+                      data-policy="monitoring.poll_interval"
+                      required
+                    />
+                    <div class="policy-boundary">
+                      <strong>Automatic termination is unavailable</strong>
+                      <p>
+                        The shipped collector cannot prove a file writer.
+                        Changing response mode permits guarded manual actions;
+                        it does not enable automatic prevention.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+              <section class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <h2>Detection tuning</h2>
+                    <p>
+                      Changes reset behavioral windows and restart active
+                      collectors. Validate thresholds against your workloads.
+                    </p>
+                  </div>
+                </div>
+                <div class="settings-fields detection-fields">
+                  <div>
+                    <label for="policyRate"
+                      >Unique modifications per second</label
+                    ><input
+                      id="policyRate"
+                      type="number"
+                      min="0.1"
+                      max="10000"
+                      step="0.1"
+                      data-policy="detection.max_modifications_per_sec"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="policyWindow">Behavior window (seconds)</label
+                    ><input
+                      id="policyWindow"
+                      type="number"
+                      min="1"
+                      max="60"
+                      step="1"
+                      data-policy="detection.window_seconds"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="policyFiles">Minimum unique files</label
+                    ><input
+                      id="policyFiles"
+                      type="number"
+                      min="2"
+                      max="10000"
+                      step="1"
+                      data-policy="detection.min_unique_files"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="policyRenames">Unique rename threshold</label
+                    ><input
+                      id="policyRenames"
+                      type="number"
+                      min="2"
+                      max="10000"
+                      step="1"
+                      data-policy="detection.rename_threshold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="policyEntropy"
+                      >High-entropy threshold (0–8)</label
+                    ><input
+                      id="policyEntropy"
+                      type="number"
+                      min="0"
+                      max="8"
+                      step="0.1"
+                      data-policy="detection.max_entropy_threshold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="policyMinimumSize"
+                      >Minimum sampled file size (bytes)</label
+                    ><input
+                      id="policyMinimumSize"
+                      type="number"
+                      min="1"
+                      max="1048576"
+                      step="1"
+                      data-policy="detection.min_file_size_for_entropy"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="policySamples">Entropy samples per file</label
+                    ><input
+                      id="policySamples"
+                      type="number"
+                      min="1"
+                      max="64"
+                      step="1"
+                      data-policy="detection.entropy_check_samples"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="policyTimeout"
+                      >Entropy analysis timeout (seconds)</label
+                    ><input
+                      id="policyTimeout"
+                      type="number"
+                      min="0.1"
+                      max="10"
+                      step="0.1"
+                      data-policy="detection.entropy_timeout"
+                      required
+                    />
+                  </div>
+                  <div class="full-width">
+                    <label for="policySuspicious"
+                      >Suspicious extensions, one per line</label
+                    ><textarea
+                      id="policySuspicious"
+                      rows="3"
+                      data-policy="detection.suspicious_extensions"
+                      spellcheck="false"
+                    ></textarea>
+                  </div>
+                </div>
+              </section>
+              <section class="panel">
+                <div class="settings-fields">
+                  <label for="policyReason">Reason for this change</label
+                  ><input
+                    id="policyReason"
+                    type="text"
+                    minlength="5"
+                    maxlength="512"
+                    required
+                    placeholder="Explain the operational reason for your changes"
+                  />
+                  <p id="policyMessage" class="form-error" role="status"></p>
+                  <div class="control-actions">
+                    <button
+                      id="previewPolicy"
+                      type="submit"
+                      class="button primary"
+                      disabled
+                    >
+                      Review changes</button
+                    ><span id="unsavedPolicy" class="subtle"
+                      >No unsaved edits</span
+                    >
+                  </div>
+                </div>
+              </section>
+            </form>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Operator activity</h2>
+                  <p>
+                    Recent decisions, policy revisions, and recorded coverage
+                    gaps.
+                  </p>
+                </div>
+              </div>
+              <div id="operatorHistory" class="operator-history"></div>
+            </section>
+          </section>
+          <footer class="main-footer">
+            <span
+              ><svg><use href="#i-lock" /></svg>Private local workspace</span
+            ><span id="lastUpdated">Waiting for engine</span
+            ><span>CryptoWarden 3.1</span>
+          </footer>
+        </main>
+      </div>
+    </div>
+    <dialog id="incidentDialog" aria-labelledby="detailTitle">
+      <div class="dialog-heading">
+        <div>
+          <span class="section-kicker">INCIDENT DETAILS</span>
+          <h2 id="detailTitle">Incident evidence</h2>
         </div>
-
-    </main>
-</div>
-
-<script src="dashboard.js"></script>
-</body>
+        <button
+          id="closeDialog"
+          class="icon-button"
+          aria-label="Close incident details"
+        >
+          ×
+        </button>
+      </div>
+      <div id="detailBody"></div>
+      <div class="dialog-actions">
+        <button id="resolveButton" class="button">Acknowledge incident</button
+        ><button id="terminateButton" class="button danger">
+          Terminate captured process
+        </button>
+      </div>
+    </dialog>
+    <dialog id="policyReviewDialog" aria-labelledby="policyReviewTitle">
+      <form id="policyReviewForm">
+        <div class="dialog-heading">
+          <div>
+            <span class="section-kicker">REVIEW BEFORE APPLYING</span>
+            <h2 id="policyReviewTitle">Apply protection policy</h2>
+          </div>
+          <button
+            type="button"
+            class="icon-button"
+            data-close="policyReviewDialog"
+            aria-label="Close policy review"
+          >
+            ×
+          </button>
+        </div>
+        <div class="dialog-body">
+          <p id="reviewRevision"></p>
+          <div id="policyChanges"></div>
+          <ul id="policyWarnings" class="policy-warnings"></ul>
+          <label class="checkbox-label"
+            ><input id="policyGapAck" type="checkbox" required />I understand
+            that active collectors will restart and the coverage gap will be
+            recorded.</label
+          >
+          <div id="terminationConfirmation" hidden>
+            <label for="terminationPhrase"
+              >Type ENABLE MANUAL TERMINATION to enable operator-requested
+              termination</label
+            ><input
+              id="terminationPhrase"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <p id="reviewError" class="form-error" role="alert"></p>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="button" data-close="policyReviewDialog">
+            Cancel</button
+          ><button id="applyPolicy" type="submit" class="button primary">
+            Apply reviewed changes
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="monitoringDialog" aria-labelledby="monitoringTitle">
+      <form id="monitoringForm">
+        <div class="dialog-heading">
+          <h2 id="monitoringTitle">Monitoring control</h2>
+          <button
+            type="button"
+            class="icon-button"
+            data-close="monitoringDialog"
+            aria-label="Close monitoring control"
+          >
+            ×
+          </button>
+        </div>
+        <div class="dialog-body">
+          <p id="monitoringExplanation"></p>
+          <div id="pauseDurationField">
+            <label for="pauseDuration">Pause duration</label
+            ><select id="pauseDuration">
+              <option value="60">1 minute</option>
+              <option value="300" selected>5 minutes</option>
+              <option value="900">15 minutes</option>
+              <option value="3600">1 hour</option>
+              <option value="0">Until I resume manually</option>
+            </select>
+          </div>
+          <label for="monitoringReason">Reason for this action</label
+          ><input
+            id="monitoringReason"
+            minlength="5"
+            maxlength="512"
+            required
+          /><label id="monitoringGapField" class="checkbox-label"
+            ><input id="monitoringGapAck" type="checkbox" />I understand that
+            file-change coverage will be interrupted.</label
+          >
+          <p id="monitoringError" class="form-error" role="alert"></p>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="button" data-close="monitoringDialog">
+            Cancel</button
+          ><button id="applyMonitoring" type="submit" class="button primary">
+            Confirm action
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
 </html>

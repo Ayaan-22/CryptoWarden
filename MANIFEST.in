@@ -1,0 +1,5 @@
+include config.yaml requirements*.txt requirements*.lock requirements.in SECURITY.md
+include package.json package-lock.json playwright.config.js
+recursive-include docs *.md *.png
+recursive-include tests *.py *.js *.cjs
+recursive-include tools *.py

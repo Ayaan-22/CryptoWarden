@@ -1,0 +1,273 @@
+"""Offline audit probes. No services are started; process termination is mocked.
+
+Run from the repository root: python audit/reproduce_findings.py
+The probes describe observed defects, not acceptance tests for desired behavior.
+After fixes, a probe may stop reproducing and must be reviewed accordingly.
+"""
+import asyncio
+import contextlib
+import io
+import json
+import os
+from pathlib import Path
+import queue
+import sys
+import tempfile
+import time
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src import config as settings
+from src import main
+from src.analysis.process_tracker import ProcessState, ProcessTracker
+from src.detection.engine import DetectionEngine
+from src.monitoring import file_monitor, honey_pot, process_monitor
+from src.utils.dashboard_bridge import DashboardBridge
+from src.utils.process_tools import ProcessCache
+from starlette.staticfiles import StaticFiles
+from tools import cleanup_honeypots
+
+
+def record(name, **observed):
+    print(json.dumps({"probe": name, **observed}, sort_keys=True))
+
+
+class ImmediateLoop:
+    def call_soon_threadsafe(self, callback, *args):
+        callback(*args)
+
+
+async def process_one(app, event):
+    app.running = True
+    app.bridge.send_activity = AsyncMock()
+    app.bridge.send_alert = AsyncMock()
+
+    async def finish(_stats):
+        app.running = False
+
+    app.bridge.send_stats = finish
+    await app.queue.put(event)
+    await asyncio.wait_for(app.process_events(), timeout=2)
+
+
+async def async_probes():
+    async def websocket_request(bridge, messages):
+        received = iter(messages)
+        sent = []
+
+        async def receive():
+            return next(received)
+
+        async def send(message):
+            sent.append(message)
+
+        scope = {"type": "websocket", "asgi": {"version": "3.0"},
+                 "scheme": "ws", "path": "/ws", "root_path": "",
+                 "query_string": b"", "headers": [(b"origin", b"https://untrusted.invalid")],
+                 "server": ("127.0.0.1", 8001), "client": ("127.0.0.1", 12345),
+                 "subprotocols": []}
+        await asyncio.wait_for(bridge.app(scope, receive, send), timeout=2)
+        return sent
+
+    bridge = DashboardBridge()
+    sent = await websocket_request(bridge, [
+        {"type": "websocket.connect"},
+        {"type": "websocket.receive", "text": json.dumps({"command": "kill", "pid": 23456})},
+        {"type": "websocket.disconnect", "code": 1000}])
+    record("unauthenticated_cross_origin_command", queued=bridge.command_queue.get_nowait(),
+           accepted=any(message["type"] == "websocket.accept" for message in sent))
+
+    bridge = DashboardBridge(auth_token="audit-placeholder-token")
+    sent = await websocket_request(bridge, [{"type": "websocket.connect"}])
+    record("configured_token_control", unauthenticated_rejected=sent == [{"type": "websocket.close", "code": 1008, "reason": ""}])
+
+    event = {"type": "modified", "pid": None, "process_name": None,
+             "src_path": "audit-fictional-document.txt", "timestamp": time.time(),
+             "attribution_confidence": "unknown"}
+
+    app = main.CryptoWarden()
+    app.tracker.get_or_create(12345, "benign-backup.exe").update_io_stats(100)
+    app.responder.take_action = Mock()
+    with patch.object(main, "calculate_file_entropy", return_value=7.9):
+        await process_one(app, event)
+    record("unrelated_high_io_process", response_calls=app.responder.take_action.call_args_list.__repr__())
+
+    app = main.CryptoWarden()
+    app.responder.take_action = Mock()
+    app.honey_pot_paths = {os.path.normpath(event["src_path"])}
+    whitelisted_event = {**event, "pid": 12346, "process_name": "explorer.exe"}
+    with patch.object(main, "calculate_file_entropy", return_value=0):
+        await process_one(app, whitelisted_event)
+    record("whitelisted_canary", blocked=app.stats["blocked"], response_calls=app.responder.take_action.call_count)
+
+    app = main.CryptoWarden()
+    app.bridge.send_alert = AsyncMock(side_effect=RuntimeError("mock dashboard failure"))
+    app.responder.take_action = Mock()
+    try:
+        await app.handle_detection(12347, "audit-app.exe", "audit reason")
+    except RuntimeError:
+        pass
+    app.bridge.send_alert = AsyncMock()
+    await app.handle_detection(12347, "audit-app.exe", "retry")
+    record("dashboard_error_suppresses_response_and_retry", blocked=app.stats["blocked"],
+           response_calls=app.responder.take_action.call_count)
+
+    app = main.CryptoWarden()
+    app.bridge.send_alert = AsyncMock()
+    app.responder.take_action = Mock(return_value=False)
+    await app.handle_detection(12348, "audit-app.exe", "first")
+    await app.handle_detection(12348, "audit-app.exe", "retry")
+    record("failed_response_not_retried", blocked=app.stats["blocked"], response_calls=app.responder.take_action.call_count)
+
+    bridge = DashboardBridge()
+    entered_send = asyncio.Event()
+    release_send = asyncio.Event()
+
+    async def stalled_send(_message):
+        entered_send.set()
+        await release_send.wait()
+
+    connection = Mock()
+    connection.send_text = stalled_send
+    bridge.active_connections.add(connection)
+    task = asyncio.create_task(bridge.send_alert(12349, "audit-app.exe", "audit reason"))
+    await asyncio.wait_for(entered_send.wait(), timeout=1)
+    record("slow_dashboard_client", broadcast_waiting=not task.done())
+    release_send.set()
+    await task
+
+    tracker = ProcessTracker()
+    monitor = process_monitor.ProcessMonitor(tracker)
+    monitor._previous_io[12350] = (0, time.time() - 1)
+    counters = iter([100, 100])
+    passes = []
+
+    def processes(_attrs):
+        writes = next(counters)
+        return [SimpleNamespace(info={"pid": 12350, "name": "audit-app.exe",
+                                     "io_counters": SimpleNamespace(write_count=writes, write_bytes=0)})]
+
+    async def tick(_delay):
+        passes.append(tracker.processes[12350].io_write_rate)
+        if len(passes) == 2:
+            raise asyncio.CancelledError
+
+    with patch.object(process_monitor.psutil, "process_iter", side_effect=processes), \
+            patch.object(process_monitor.asyncio, "sleep", side_effect=tick):
+        try:
+            await monitor._monitor_loop()
+        except asyncio.CancelledError:
+            pass
+    record("idle_io_does_not_reset", first_rate=passes[0], second_rate=passes[1])
+
+
+def sync_probes():
+    engine = DetectionEngine()
+    stale = ProcessState(20001, "audit-app.exe")
+    for _ in range(6):
+        stale.add_modification(time.time() - 60)
+    stale.update_io_stats(8)
+    record("expired_behavior", modifications_after_one_minute=stale.get_modification_rate(),
+           detected=engine.analyze_behavior(stale)[0])
+
+    slow = ProcessState(20002, "audit-app.exe")
+    now = time.time()
+    for i in range(6):
+        slow.add_modification(now - 9 + i * 1.8)
+    slow.update_io_stats(8)
+    record("rate_units", actual_average_per_second=6 / 10, reported_rate=slow.get_modification_rate(),
+           detected=engine.analyze_behavior(slow)[0])
+
+    archive = ProcessState(20005, "benign-archiver.exe")
+    archive.update_io_stats(8)
+    record("single_compressed_file", detected=engine.analyze_behavior(
+        archive, current_file_entropy=7.9, target_path="ordinary-backup.zip")[0],
+        modification_count=archive.get_modification_rate(), rename_count=len(archive.renames))
+
+    tracker = ProcessTracker()
+    old = tracker.get_or_create(20003, "old-process.exe")
+    new = tracker.get_or_create(20003, "replacement-process.exe")
+    record("pid_identity", same_state=old is new, retained_name=new.name)
+
+    cache = ProcessCache()
+    cache.running = True
+    count = []
+
+    def processes(_attrs):
+        count.append(1)
+        if len(count) > 2:
+            return []
+        proc = Mock()
+        proc.info = {"pid": 20004, "name": "audit-app.exe",
+                     "io_counters": SimpleNamespace(write_count=len(count), write_bytes=0)}
+        proc.open_files.return_value = [SimpleNamespace(path="audit-stale-path.txt")]
+        return [proc]
+
+    def tick(_delay):
+        if len(count) == 3:
+            cache.running = False
+
+    with patch("src.utils.process_tools.psutil.process_iter", side_effect=processes), \
+            patch("src.utils.process_tools.time.sleep", side_effect=tick):
+        cache._refresh_loop()
+    record("closed_process_cache_entry", result=cache.get_pid_for_file("audit-stale-path.txt", False))
+
+    static = StaticFiles(directory=ROOT / "dashboard")
+    resolved = []
+
+    class ResolverReached(Exception):
+        pass
+
+    def intercept_resolver(path):
+        resolved.append(path)
+        raise ResolverReached
+
+    # Stop before realpath can touch the OS or initiate any network traffic.
+    with patch("starlette.staticfiles.os.path.realpath", side_effect=intercept_resolver):
+        try:
+            static.lookup_path(r"\\audit.invalid\share\proof")
+        except ResolverReached:
+            pass
+    record("staticfiles_unc_before_containment", resolver_received_unc=resolved[0].startswith("\\\\"))
+
+    events = queue.Queue()
+    handler = file_monitor.RansomwareEventHandler(events, ImmediateLoop())
+    with patch.object(file_monitor, "get_process_using_file", return_value=(None, None)), \
+            patch.object(file_monitor, "get_recent_writer_candidate", return_value=(None, None)):
+        handler._process_event("moved", r"C:\audit\document.tmp", r"C:\audit\document.tmp.enc")
+    record("ignored_source_rename", emitted_events=events.qsize())
+
+    with tempfile.TemporaryDirectory(prefix="cryptowarden-audit-") as directory:
+        existing = Path(directory) / honey_pot.HONEY_POT_FILENAMES[0]
+        existing.write_text("USER-OWNED FIXTURE: not a generated canary", encoding="utf-8")
+        with patch.object(honey_pot, "MONITOR_DIRECTORIES", [directory]):
+            registered = honey_pot.setup_honey_pots()
+        relative_paths = {os.path.normpath(os.path.join("RansomwareTestArea", "_passwords.txt"))}
+        record("canary_path_identity", relative_vs_absolute_match=honey_pot.is_honey_pot_access(
+            os.path.abspath(os.path.join("RansomwareTestArea", "_passwords.txt")), relative_paths),
+            case_variant_match=honey_pot.is_honey_pot_access(str(existing).upper(), registered))
+        with patch.object(cleanup_honeypots, "MONITOR_DIRECTORIES", [directory]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            cleanup_honeypots.cleanup()
+        record("canary_ownership", registered_existing_user_file=os.path.normpath(str(existing)) in registered,
+               existing_user_fixture_deleted=not existing.exists())
+
+    with tempfile.TemporaryDirectory(prefix="cryptowarden-config-audit-") as directory:
+        filename = Path(directory) / "config.yaml"
+        filename.write_text("response:\n  mode: typo_mode\n", encoding="utf-8")
+        with patch.dict(os.environ, {"CRYPTOWARDEN_CONFIG": str(filename)}):
+            loaded = settings.load_config()
+        record("invalid_mode", accepted_mode=loaded["response"]["mode"])
+        filename.write_text("response: [broken\n", encoding="utf-8")
+        with patch.dict(os.environ, {"CRYPTOWARDEN_CONFIG": str(filename)}):
+            loaded = settings.load_config()
+        record("malformed_config", fallback_mode=loaded["response"]["mode"])
+
+if __name__ == "__main__":
+    # Defense in depth: even unexpected paths cannot invoke the real kill helper.
+    with patch("src.response.responder.kill_process", side_effect=AssertionError("real termination forbidden")):
+        sync_probes()
+        asyncio.run(async_probes())

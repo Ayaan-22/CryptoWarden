@@ -1,102 +1,70 @@
+"""Process-instance inspection. Never infer a writer from system-wide IO."""
+
+import hashlib
+
 import psutil
-import os
-import threading
-import time
-from src.utils.logger import logger
+
+from src.config import normalize_path
+from src.models import ProcessIdentity
+
+
+def inspect_process(pid):
+    if type(pid) is not int or pid <= 0:
+        return None
+    try:
+        process = psutil.Process(pid)
+        with process.oneshot():
+            identity = ProcessIdentity(
+                pid, process.create_time(), process.name(), normalize_path(process.exe())
+            )
+        return identity if process.is_running() else None
+    except (psutil.Error, OSError):
+        return None
+
+
+def executable_digest(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
 
 class ProcessCache:
-    """
-    Maintains a mapping of open files to PIDs to avoid expensive psutil iterations on every event.
-    """
-    def __init__(self, refresh_interval=0.1):
-        self.file_to_pid = {}
-        self.history = {} # Keep history of recently seen files
-        self.refresh_interval = refresh_interval
+    """Deprecated compatibility facade. Open-file enumeration cannot prove writes."""
+
+    def __init__(self, refresh_interval=1):
         self.running = False
-        self._lock = threading.Lock()
+        self.tracker = None
+        self.file_to_pid = {}
+        self.history = {}
 
     def start(self):
         self.running = True
-        self._thread = threading.Thread(target=self._refresh_loop, daemon=True)
-        self._thread.start()
 
     def stop(self):
         self.running = False
+        self.file_to_pid.clear()
+        self.history.clear()
 
-    def _refresh_loop(self):
-        while self.running:
-            try:
-                new_mapping = {}
-                for proc in psutil.process_iter(['pid', 'name', 'open_files']):
-                    try:
-                        # Skip if no open files
-                        if not proc.info['open_files']:
-                            continue
-                        for f in proc.info['open_files']:
-                            path = os.path.normpath(f.path)
-                            new_mapping[path] = (proc.info['pid'], proc.info['name'])
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-                
-                with self._lock:
-                    # Update history with old mapping before overwriting
-                    self.history.update(self.file_to_pid)
-                    # Limit history size
-                    if len(self.history) > 1000:
-                        self.history = dict(list(self.history.items())[-500:])
-                    self.file_to_pid = new_mapping
-            except Exception as e:
-                logger.error(f"Error refreshing process cache: {e}")
-            time.sleep(self.refresh_interval)
+    def get_pid_for_file(self, filepath, allow_direct_lookup=False):
+        return None, None
 
-    def get_pid_for_file(self, filepath: str):
-        filepath = os.path.normpath(filepath)
-        with self._lock:
-            # Check current mapping
-            res = self.file_to_pid.get(filepath)
-            if res: return res
-            
-            # Check history (in case file was just closed)
-            res = self.history.get(filepath)
-            if res: return res
-            
-        # Fallback: Direct check for the specific file (expensive but necessary on cache miss)
-        return self._direct_lookup(filepath)
+    def get_recent_top_writer(self, max_age=0):
+        return None, None
 
-    def _direct_lookup(self, filepath: str):
-        try:
-            for proc in psutil.process_iter(['pid', 'name', 'open_files']):
-                try:
-                    files = proc.info.get('open_files')
-                    if files:
-                        for f in files:
-                            if os.path.normpath(f.path) == filepath:
-                                return (proc.info['pid'], proc.info['name'])
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
-        except Exception:
-            pass
-        return (None, None)
 
-# Global cache instance
 process_cache = ProcessCache()
 
-def get_process_using_file(filepath: str):
-    """
-    Uses the optimized ProcessCache to find the PID for a file.
-    """
-    return process_cache.get_pid_for_file(filepath)
 
-def kill_process(pid: int):
-    """
-    Terminates a process by PID.
-    """
-    try:
-        proc = psutil.Process(pid)
-        proc.kill()
-        return True
-    except psutil.NoSuchProcess:
-        return True
-    except Exception as e:
-        logger.error(f"Failed to kill process {pid}: {e}")
-        return False
+def get_process_using_file(filepath, allow_direct_lookup=False):
+    return None, None
+
+
+def get_recent_writer_candidate():
+    return None, None
+
+
+def kill_process(pid):
+    """Unsafe PID-only API removed. Use Responder with a captured ProcessIdentity."""
+    raise ValueError("PID-only termination is not supported")

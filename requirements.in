@@ -1,0 +1,8 @@
+# Runtime resolution policy; install requirements.txt for the hash-locked set.
+starlette>=1.8,<2
+anyio>=4.14.2,<5
+uvicorn>=0.54,<1
+watchdog>=6,<7
+psutil>=7.2.2,<8
+PyYAML>=6.0.3,<7
+websockets>=16,<17
