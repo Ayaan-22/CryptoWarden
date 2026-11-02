@@ -6,6 +6,8 @@ CryptoWarden watches configured directories for canary integrity events and susp
 
 **Release status:** hardened monitoring/response candidate. The shipped watchdog collector reports file changes without an authenticated writer identity. Automatic termination is unavailable. This prevents unrelated applications from being killed based on coincidental I/O. Industry deployment qualification is tracked in [the release gates](docs/RELEASE_GATES.md).
 
+An opt-in [Windows native ETL replay prototype](docs/NATIVE_ATTRIBUTION.md) explores writer/lifetime correlation with explicit loss handling. Its evidence is unqualified, preserves UNKNOWN when unresolved, and cannot authorize response; the native release gate remains open.
+
 ![Console overview using isolated demonstration records](docs/assets/console-desktop.png)
 
 ## Install

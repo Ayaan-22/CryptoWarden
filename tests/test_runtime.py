@@ -30,7 +30,8 @@ def event(path, kind="modified", **kwargs):
     }
 
 
-def test_unattributed_event_cannot_select_high_io_actor(cfg, tmp_path):
+@pytest.mark.parametrize("source", ["watchdog", "windows_kernel_etw_replay_prototype"])
+def test_unattributed_event_cannot_select_high_io_actor(cfg, tmp_path, source):
     async def check():
         app = app_with_store(cfg)
         app.tracker.get_or_create(12345, "benign.exe", 100).update_io_stats(999)
@@ -42,11 +43,13 @@ def test_unattributed_event_cannot_select_high_io_actor(cfg, tmp_path):
                 is_canary=True,
                 pid=12345,
                 process={"pid": 12345},
+                source=source,
                 attribution_confidence="verified",
             )
         )
         assert app.stats["detections"] == 1 and app.stats["blocked"] == 0
         assert app.store.list()[0]["process"] is None
+        assert app.store.list()[0]["attribution"] == "unknown"
         app.responder.take_action.assert_not_called()
         await app.stop()
 
